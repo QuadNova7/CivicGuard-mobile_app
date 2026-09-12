@@ -1,4 +1,7 @@
 import 'dart:io';
+import '../../../core/network/api_client.dart';
+import '../../../core/network/api_config.dart';
+import '../../../core/services/local_cache_service.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -6,7 +9,6 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/location_helper.dart';
 import '../../auth/services/auth_service.dart';
-import '../../auth/views/dialogs/auth_role_dialog.dart';
 
 class DonateSuppliesFormScreen extends StatefulWidget {
   final String category;
@@ -51,6 +53,15 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
   bool _isSubmitting = false;
   String _locationStatus = '';
 
+  // Shelters & Help Requests State
+  List<Map<String, dynamic>> _shelters = [];
+  String _selectedShelterId = 'd1111111-1111-1111-1111-111111111111';
+  String _selectedShelterName = 'Havelock Community Center Shelter';
+
+  List<Map<String, dynamic>> _helpRequests = [];
+  String? _selectedHelpRequestId;
+  String? _selectedHelpRequestDesc;
+
   @override
   void initState() {
     super.initState();
@@ -73,7 +84,38 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
     // Auto-detect live GPS location on open
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _getCurrentLocation();
+      _fetchSheltersAndRequests();
     });
+  }
+
+  Future<void> _fetchSheltersAndRequests() async {
+    // 1. Fetch Shelters
+    try {
+      final res = await ApiClient.instance.get(ApiConfig.reliefShelters);
+      if (res.success && res.data is Map && res.data['shelters'] is List) {
+        final list = (res.data['shelters'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        if (list.isNotEmpty && mounted) {
+          setState(() {
+            _shelters = list;
+            _selectedShelterId = list[0]['id']?.toString() ?? _selectedShelterId;
+            _selectedShelterName = list[0]['name']?.toString() ?? _selectedShelterName;
+          });
+        }
+      }
+    } catch (_) {}
+
+    // 2. Fetch Open Help Requests
+    try {
+      final resReq = await ApiClient.instance.get(ApiConfig.reliefHelpRequests);
+      if (resReq.success && resReq.data is Map && resReq.data['requests'] is List) {
+        final listReq = (resReq.data['requests'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        if (listReq.isNotEmpty && mounted) {
+          setState(() {
+            _helpRequests = listReq;
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   @override
@@ -186,7 +228,7 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
         setState(() {
           _locationController.text = result.formattedAddress;
           _locationStatus =
-              'Live GPS: ${result.latitude.toStringAsFixed(4)}, ${result.longitude.toStringAsFixed(4)} (Accuracy: \u00b1${result.accuracy.toStringAsFixed(1)}m)';
+              'Live GPS: ${result.latitude.toStringAsFixed(4)}, ${result.longitude.toStringAsFixed(4)} (Accuracy: ±${result.accuracy.toStringAsFixed(1)}m)';
           _isLocating = false;
         });
       }
@@ -200,7 +242,7 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
     }
   }
 
-  void _submitDonation() {
+  Future<void> _submitDonation() async {
     final itemName = _itemNameController.text.trim();
     if (itemName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -223,49 +265,86 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
       return;
     }
 
-    // AUTH GUARD: Require login before submitting donation
-    if (!AuthService.instance.isLoggedIn) {
+    // Strict Auth Guard: User must be signed in or registered before submitting donation
+    final isLoggedIn = AuthService.instance.isLoggedIn;
+    final user = AuthService.instance.currentUser;
+
+    if (!isLoggedIn || user == null || user.id.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.lock_outline_rounded, color: Colors.white, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Please sign in or register to submit your donation.',
-                  style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600, fontSize: 12.5),
-                ),
-              ),
-            ],
+          content: Text(
+            'Please sign in or register to submit your donation pledge.',
+            style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
           ),
-          backgroundColor: AppColors.primaryNavy,
+          backgroundColor: const Color(0xFF0F2B48),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          margin: const EdgeInsets.all(16),
-          duration: const Duration(seconds: 3),
         ),
       );
-      AuthRoleSelectionDialog.show(context, redirectPath: '/donate-categories');
+      _showDonationAuthModal(context);
       return;
     }
 
+    final donorId = user.id;
+
     setState(() => _isSubmitting = true);
 
-    Future.delayed(const Duration(milliseconds: 600), () {
-      if (!mounted) return;
-      setState(() => _isSubmitting = false);
-      context.push(
-        '/donation-success',
-        extra: {
-          'category': _currentCategory,
-          'itemName': itemName,
-          'quantity': '$_quantity $_selectedUnit',
-          'location': location,
-          'description': _descriptionController.text.trim(),
-        },
+    // Map Category to Backend Enum
+    String resourceType = 'FOOD';
+    if (_currentCategory.contains('Water') || _currentCategory.contains('Food')) {
+      resourceType = 'FOOD';
+    } else if (_currentCategory.contains('Medical') || _currentCategory.contains('Medicine')) {
+      resourceType = 'MEDICAL';
+    } else if (_currentCategory.contains('Cloth') || _currentCategory.contains('Blanket')) {
+      resourceType = 'BEDDING';
+    }
+
+    final payload = {
+      'resource_name': itemName,
+      'quantity': _quantity,
+      'unit': _selectedUnit,
+      'resource_type': resourceType,
+      'shelter_id': _selectedShelterId,
+      'help_request_id': _selectedHelpRequestId,
+      'user_id': donorId,
+      'assigned_by': donorId,
+      'donor_id': donorId,
+    };
+
+    try {
+      await ApiClient.instance.post(
+        ApiConfig.reliefResources,
+        body: payload,
       );
+    } catch (_) {}
+
+    // CACHE IMMEDIATELY IN LOCAL STORAGE
+    await LocalCacheService.instance.addDonation({
+      'resource_name': itemName,
+      'quantity': _quantity,
+      'unit': _selectedUnit,
+      'resource_type': resourceType,
+      'shelter_name': _selectedShelterName,
+      'shelter_id': _selectedShelterId,
+      'help_request_id': _selectedHelpRequestId,
+      'help_request_desc': _selectedHelpRequestDesc,
+      'status': 'AVAILABLE',
+      'created_at': DateTime.now().toIso8601String(),
     });
+
+    if (!mounted) return;
+    setState(() => _isSubmitting = false);
+    context.push(
+      '/donation-success',
+      extra: {
+        'category': _currentCategory,
+        'itemName': itemName,
+        'quantity': '$_quantity $_selectedUnit',
+        'location': location,
+        'shelterName': _selectedShelterName,
+        'description': _descriptionController.text.trim(),
+      },
+    );
   }
 
   IconData _getCategoryIcon(String cat) {
@@ -312,32 +391,36 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. Auth Status Header Card (Before Submit)
+            // 1. Auth Ribbon
             _buildAuthBanner(context),
+            const SizedBox(height: 16),
 
-            const SizedBox(height: 12),
-
-            // 2. Category Header Card with "Change" button
+            // 2. Category Selector Pill
+            Text(
+              'Donation Category',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textDark,
+              ),
+            ),
+            const SizedBox(height: 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFCBD5E1), width: 1),
               ),
               child: Row(
                 children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE0F2FE),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                  CircleAvatar(
+                    radius: 18,
+                    backgroundColor: const Color(0xFFE0F2FE),
                     child: Icon(
                       _getCategoryIcon(_currentCategory),
                       color: const Color(0xFF0284C7),
-                      size: 22,
+                      size: 20,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -346,46 +429,184 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Category',
+                          _currentCategory,
                           style: GoogleFonts.plusJakartaSans(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                            color: AppColors.textSecondary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textDark,
                           ),
                         ),
                         Text(
-                          _currentCategory,
+                          'Verified Emergency Supplies',
                           style: GoogleFonts.plusJakartaSans(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textDark,
+                            fontSize: 11,
+                            color: AppColors.textSecondary,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  TextButton(
-                    onPressed: () => context.pop(),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      minimumSize: Size.zero,
-                    ),
-                    child: Text(
-                      'Change',
-                      style: GoogleFonts.plusJakartaSans(
-                        color: const Color(0xFF0284C7),
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
+                  const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 20),
                 ],
               ),
             ),
 
             const SizedBox(height: 16),
 
-            // 3. Item Name Field
+            // 3. Target Shelter Center Dropdown
+            Row(
+              children: [
+                const Icon(Icons.domain_rounded, color: Color(0xFF0284C7), size: 18),
+                const SizedBox(width: 6),
+                Text(
+                  'Target Relief Shelter / Center *',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textDark,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFCBD5E1), width: 1),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedShelterId,
+                  isExpanded: true,
+                  icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B)),
+                  items: (_shelters.isNotEmpty
+                          ? _shelters
+                          : [
+                              {
+                                'id': 'd1111111-1111-1111-1111-111111111111',
+                                'name': 'Havelock Community Center Shelter (Colombo 05)',
+                              },
+                              {
+                                'id': 'd2222222-2222-2222-2222-222222222222',
+                                'name': 'Royal College Sports Pavilion (Colombo 07)',
+                              },
+                              {
+                                'id': 'd3333333-3333-3333-3333-333333333333',
+                                'name': 'Getambe Cultural Hall Relief Center (Kandy)',
+                              },
+                            ])
+                      .map((s) {
+                    final id = s['id']?.toString() ?? '';
+                    final name = s['name']?.toString() ?? 'Relief Center';
+                    return DropdownMenuItem<String>(
+                      value: id,
+                      child: Text(
+                        name,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textDark,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() {
+                        _selectedShelterId = val;
+                        final found = _shelters.firstWhere((s) => s['id'] == val, orElse: () => {'name': val});
+                        _selectedShelterName = found['name']?.toString() ?? val;
+                      });
+                    }
+                  },
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // 4. Link to Emergency SOS Help Request (Optional)
+            Row(
+              children: [
+                const Icon(Icons.sos_rounded, color: Color(0xFFDC2626), size: 18),
+                const SizedBox(width: 6),
+                Text(
+                  'Fulfill Open SOS Help Request (Optional)',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textDark,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFCBD5E1), width: 1),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String?>(
+                  value: _selectedHelpRequestId,
+                  isExpanded: true,
+                  icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B)),
+                  items: [
+                    DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text(
+                        'General Shelter Inventory (No specific SOS request)',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF64748B),
+                        ),
+                      ),
+                    ),
+                    ..._helpRequests.map((req) {
+                      final id = req['id']?.toString() ?? '';
+                      final type = req['help_type']?.toString() ?? 'SOS';
+                      final desc = req['description']?.toString() ?? 'Emergency request';
+                      final count = req['people_count'] ?? 1;
+                      return DropdownMenuItem<String?>(
+                        value: id,
+                        child: Text(
+                          '[$type - $count people] $desc',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFFDC2626),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      );
+                    }),
+                  ],
+                  onChanged: (val) {
+                    setState(() {
+                      _selectedHelpRequestId = val;
+                      if (val != null) {
+                        final found = _helpRequests.firstWhere((r) => r['id'] == val, orElse: () => {});
+                        _selectedHelpRequestDesc = found['description']?.toString();
+                      } else {
+                        _selectedHelpRequestDesc = null;
+                      }
+                    });
+                  },
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // 5. Item Name
             Text(
               'Item Name *',
               style: GoogleFonts.plusJakartaSans(
@@ -398,8 +619,8 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
             TextFormField(
               controller: _itemNameController,
               decoration: InputDecoration(
-                hintText: 'e.g. Bottled Water (500ml)',
-                hintStyle: GoogleFonts.plusJakartaSans(color: AppColors.textMuted, fontSize: 14),
+                hintText: 'e.g. Bottled Water, Dry Rations, Blankets',
+                hintStyle: GoogleFonts.plusJakartaSans(color: AppColors.textMuted, fontSize: 13.5),
                 filled: true,
                 fillColor: Colors.white,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -420,21 +641,38 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
 
             const SizedBox(height: 16),
 
-            // 4. Quantity Stepper + Unit Selector
-            Text(
-              'Quantity & Unit *',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textDark,
-              ),
+            // 6. Quantity and Units
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Quantity *',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textDark,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'Unit *',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textDark,
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             Row(
               children: [
-                // Quantity Counter
+                // Quantity Counter Box
                 Container(
                   height: 50,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(14),
@@ -443,7 +681,7 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
                   child: Row(
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.remove_rounded, size: 20, color: Color(0xFF64748B)),
+                        icon: const Icon(Icons.remove_rounded, color: Color(0xFF64748B), size: 20),
                         onPressed: () {
                           if (_quantity > 1) {
                             setState(() {
@@ -457,7 +695,7 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
                         },
                       ),
                       SizedBox(
-                        width: 44,
+                        width: 48,
                         child: Text(
                           '$_quantity',
                           textAlign: TextAlign.center,
@@ -469,7 +707,7 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.add_rounded, size: 20, color: Color(0xFF64748B)),
+                        icon: const Icon(Icons.add_rounded, color: Color(0xFF64748B), size: 20),
                         onPressed: () {
                           setState(() {
                             _quantity = _quantity < 10
@@ -526,7 +764,7 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
 
             const SizedBox(height: 16),
 
-            // 5. Description / Notes
+            // 7. Description / Notes
             Text(
               'Description & Expiry Notes',
               style: GoogleFonts.plusJakartaSans(
@@ -562,7 +800,7 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
 
             const SizedBox(height: 16),
 
-            // 6. Photo Attachments
+            // 8. Photo Attachments
             Text(
               'Add Item Photos',
               style: GoogleFonts.plusJakartaSans(
@@ -645,7 +883,7 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
 
             const SizedBox(height: 16),
 
-            // 7. Pickup / Drop-off Location
+            // 9. Pickup / Drop-off Location
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -751,7 +989,7 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
 
             const SizedBox(height: 24),
 
-            // 8. Submit Button
+            // 10. Submit Button
             SizedBox(
               width: double.infinity,
               height: 50,
@@ -772,7 +1010,7 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
                       )
                     : Text(
-                        'Submit Donation',
+                        'Submit Donation Pledge',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
@@ -783,6 +1021,148 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
             ),
 
             const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
+    void _showDonationAuthModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 38,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFCBD5E1),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF0F2B48), Color(0xFF1E40AF)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF0F2B48).withValues(alpha: 0.25),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.volunteer_activism_rounded, color: Colors.white, size: 30),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Sign In Required to Donate',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF0F2B48),
+                letterSpacing: -0.3,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Please sign in or register an account before submitting to link this donation to your verified citizen profile.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 12.5,
+                color: const Color(0xFF64748B),
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              width: double.infinity,
+              height: 48,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF0F2B48), Color(0xFF1E40AF)],
+                ),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF0F2B48).withValues(alpha: 0.25),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  context.push('/login?tab=0&role=CITIZEN&redirect=/donate-categories');
+                },
+                icon: const Icon(Icons.login_rounded, color: Colors.white, size: 18),
+                label: Text(
+                  'Sign In to Account',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              height: 48,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF10B981), width: 1.3),
+              ),
+              child: TextButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  context.push('/login?tab=1&role=CITIZEN&redirect=/donate-categories');
+                },
+                icon: const Icon(Icons.person_add_alt_1_rounded, color: Color(0xFF059669), size: 18),
+                label: Text(
+                  'Register as Citizen / Donor',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF059669),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(
+                'Cancel',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF94A3B8),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -832,7 +1212,7 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton(
-                  onPressed: () => AuthRoleSelectionDialog.show(context, redirectPath: '/donate-categories'),
+                  onPressed: () => _showDonationAuthModal(context),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryNavy,
                     foregroundColor: Colors.white,

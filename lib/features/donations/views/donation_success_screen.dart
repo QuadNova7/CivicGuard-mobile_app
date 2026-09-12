@@ -42,7 +42,7 @@ class DonationSuccessScreen extends StatelessWidget {
                       height: 130,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: const Color(0xFFDCFCE7).withOpacity(0.5),
+                        color: const Color(0xFFDCFCE7).withValues(alpha: 0.5),
                       ),
                     ),
                     Container(
@@ -105,7 +105,7 @@ class DonationSuccessScreen extends StatelessWidget {
                   border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF0F2B48).withOpacity(0.03),
+                      color: const Color(0xFF0F2B48).withValues(alpha: 0.03),
                       blurRadius: 14,
                       offset: const Offset(0, 4),
                     ),

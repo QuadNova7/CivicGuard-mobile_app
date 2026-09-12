@@ -120,7 +120,7 @@ class DonationCategoryScreen extends StatelessWidget {
                     border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF0F2B48).withOpacity(0.02),
+                        color: const Color(0xFF0F2B48).withValues(alpha: 0.02),
                         blurRadius: 10,
                         offset: const Offset(0, 3),
                       ),
@@ -135,7 +135,7 @@ class DonationCategoryScreen extends StatelessWidget {
                           extra: {
                             'category': cat.title,
                             'iconCode': cat.icon.codePoint,
-                            'iconColor': cat.iconColor.value,
+                            'iconColor': cat.iconColor.toARGB32(),
                           },
                         );
                       },
