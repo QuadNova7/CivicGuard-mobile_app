@@ -19,7 +19,7 @@ class MapboxConfig {
       if (style == styleDark) mapboxStyle = 'dark-v11';
       if (style == styleOutdoors) mapboxStyle = 'outdoors-v12';
       if (style == styleLight) mapboxStyle = 'light-v11';
-      return 'https://api.mapbox.com/styles/v1/mapbox//tiles/256/{z}/{x}/{y}@2x?access_token=';
+      return 'https://api.mapbox.com/styles/v1/mapbox/$mapboxStyle/tiles/256/{z}/{x}/{y}@2x?access_token=$activeToken';
     }
 
     // 100% Watermark-Free High-Definition Providers (No API Keys, No Watermarks!)

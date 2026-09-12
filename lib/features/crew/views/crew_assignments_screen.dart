@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/location_helper.dart';
 import '../../auth/services/auth_service.dart';
+import '../services/crew_api_service.dart';
 
 class CrewAssignment {
   final String id;
@@ -114,16 +115,9 @@ class _CrewAssignmentsScreenState extends State<CrewAssignmentsScreen> {
   bool _isOnDuty = true;
   double? _currentLat;
   double? _currentLng;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchCurrentLocation();
-    // Default to Water Rescue Lead if not logged in
-    if (!AuthService.instance.isLoggedIn || !AuthService.instance.currentUser!.isFieldCrew) {
-      AuthService.instance.loginAs(AuthService.waterRescueLead);
-    }
-  }
+  bool _isLoading = true;
+  List<CrewAssignment> _activeDispatches = [];
+  List<CrewAssignment> _resolvedDispatches = [];
 
   Future<void> _fetchCurrentLocation() async {
     try {
@@ -148,166 +142,97 @@ class _CrewAssignmentsScreenState extends State<CrewAssignmentsScreen> {
     return 12742 * asin(sqrt(a));
   }
 
-  // Specialized task database per squad specialty
-  List<CrewAssignment> _getAssignmentsForCurrentCrew(UserModel user) {
-    final specialty = user.specialty ?? 'WATER_RESCUE';
-
-    if (specialty == '4X4_DEBRIS') {
-      return [
-        const CrewAssignment(
-          id: 'crew-002',
-          title: 'A4 Highway Landslide Roadblock',
-          priority: 'Urgent Critical',
-          priorityColor: Color(0xFFEF4444),
-          priorityBg: Color(0xFFFEE2E2),
-          location: 'Pelmadulla Sector, Ratnapura',
-          district: 'Ratnapura District',
-          assignedBy: 'Dispatched by Ratnapura District Officer',
-          status: 'Assigned',
-          statusBg: Color(0xFFDBEAFE),
-          statusColor: Color(0xFF1E40AF),
-          imagePath: 'assets/images/3.jpg',
-          description: 'Over 200 tons of boulder and mud debris blocking A4 artery. Deploy 4WD winch truck and hydraulic spreaders to open 1 lane.',
-          latitude: 6.6820,
-          longitude: 80.4040,
-          requiredSpecialty: '4x4 Debris & Road Clearance',
-          opsHotline: '+94 45 222 2222',
-          requiredGear: ['4WD Winch Truck', '2x Stihl Chainsaws', 'Hydraulic Spreader'],
-          routeSteps: [
-            'Proceed along Ratnapura-Balangoda main road (4.2 km)',
-            'Turn right at Pelmadulla clock tower towards Milepost 82 (1.1 km)',
-            'Establish safety barrier before unstable rock face (200 m)',
-          ],
-        ),
-        const CrewAssignment(
-          id: 'crew-004',
-          title: 'Kalu Ganga Fallen Timber Clearing',
-          priority: 'High Priority',
-          priorityColor: Color(0xFFF59E0B),
-          priorityBg: Color(0xFFFEF3C7),
-          location: 'Muheeth Mawatha, Ratnapura Basin',
-          district: 'Ratnapura District',
-          assignedBy: 'Dispatched by Ratnapura Disaster Unit',
-          status: 'In Progress',
-          statusBg: Color(0xFFFEF3C7),
-          statusColor: Color(0xFF92400E),
-          imagePath: 'assets/images/2.jpg',
-          description: 'Three large teak trees obstructing culvert drainage causing localized flooding. Cut and haul timber.',
-          latitude: 6.6910,
-          longitude: 80.3990,
-          requiredSpecialty: '4x4 Debris & Road Clearance',
-          opsHotline: '+94 45 222 2222',
-          requiredGear: ['Heavy Duty Chainsaw', 'High-Tension Tow Straps'],
-          routeSteps: [
-            'Take Riverside Bypass towards Kalu Ganga Bridge (1.8 km)',
-            'Enter municipal drainage canal maintenance road (350 m)',
-          ],
-        ),
-      ];
-    } else if (specialty == 'MEDICAL_TRIAGE') {
-      return [
-        const CrewAssignment(
-          id: 'crew-003',
-          title: 'Getambe Cultural Hall Medical Triage Post',
-          priority: 'Urgent Critical',
-          priorityColor: Color(0xFFEF4444),
-          priorityBg: Color(0xFFFEE2E2),
-          location: 'Getambe, Peradeniya',
-          district: 'Kandy District',
-          assignedBy: 'Dispatched by Kandy District Officer',
-          status: 'Assigned',
-          statusBg: Color(0xFFDBEAFE),
-          statusColor: Color(0xFF1E40AF),
-          imagePath: 'assets/images/2.jpg',
-          description: 'Over 85 evacuated flood victims arriving at Getambe shelter. Set up primary triage tent, oxygen stations, and wound care.',
-          latitude: 7.2735,
-          longitude: 80.6040,
-          requiredSpecialty: 'Emergency Medical & Triage Unit',
-          opsHotline: '+94 81 223 3333',
-          requiredGear: ['Mobile Trauma Kit', 'Portable Oxygen Concentrator', 'Emergency Antibiotics'],
-          routeSteps: [
-            'Take Peradeniya Road towards Getambe temple junction (3.5 km)',
-            'Enter Cultural Hall emergency ambulance bay (100 m)',
-          ],
-        ),
-        const CrewAssignment(
-          id: 'crew-005',
-          title: 'Mahaweli Lowlands Medical Evac Standby',
-          priority: 'Medium Priority',
-          priorityColor: Color(0xFF3B82F6),
-          priorityBg: Color(0xFFDBEAFE),
-          location: 'Peradeniya Riverbank Lowlands',
-          district: 'Kandy District',
-          assignedBy: 'Dispatched by Kandy Ops Center',
-          status: 'In Progress',
-          statusBg: Color(0xFFFEF3C7),
-          statusColor: Color(0xFF92400E),
-          imagePath: 'assets/images/1.jpg',
-          description: 'Support water rescue teams with on-site stabilization for hypothermia and trauma victims.',
-          latitude: 7.2650,
-          longitude: 80.5980,
-          requiredSpecialty: 'Emergency Medical & Triage Unit',
-          opsHotline: '+94 81 223 3333',
-          requiredGear: ['Foldable Stretchers', 'Thermal Blankets', 'IV Fluids'],
-          routeSteps: [
-            'Follow Old Galaha Road to Mahaweli riverbank station (2.1 km)',
-          ],
-        ),
-      ];
+  @override
+  void initState() {
+    super.initState();
+    _fetchCurrentLocation();
+    
+    // Do NOT overwrite existing user session; use preview squad if not logged in as crew
+    if (!AuthService.instance.isLoggedIn || !AuthService.instance.currentUser!.isFieldCrew) {
+      setState(() => _isLoading = false);
     } else {
-      // Default: WATER_RESCUE (Sunil Shantha - Colombo)
-      return [
-        const CrewAssignment(
-          id: 'crew-001',
-          title: 'Kolonnawa Flood Basin Rescue Operation',
-          priority: 'Urgent Critical',
-          priorityColor: Color(0xFFEF4444),
-          priorityBg: Color(0xFFFEE2E2),
-          location: 'Sedawatte & Wellampitiya Lowlands, Kolonnawa',
-          district: 'Colombo District',
-          assignedBy: 'Dispatched by Colombo Municipal Officer',
-          status: 'Assigned',
-          statusBg: Color(0xFFDBEAFE),
-          statusColor: Color(0xFF1E40AF),
-          imagePath: 'assets/images/1.jpg',
-          description: 'Kelani river flood bund overflow. Water level reaching 1.4m. Evacuate stranded families in Ward 10 using motorized inflatable craft.',
-          latitude: 6.9450,
-          longitude: 79.8820,
-          requiredSpecialty: 'Water Rescue & Boat Unit',
-          opsHotline: '+94 11 267 0002',
-          requiredGear: ['Inflatable Boat (15HP)', '4x Life Jackets', 'Water Extraction Pump', 'Tow Ropes'],
-          routeSteps: [
-            'Take Baseline Road north towards Kelani Bridge (3.2 km)',
-            'Turn right onto Sedawatte flood relief embankment road (800 m)',
-            'Launch boat at Sedawatte Boat Ramp Point Bravo (100 m)',
-          ],
-        ),
-        const CrewAssignment(
-          id: 'crew-006',
-          title: 'Grandpass Canal Breach Water Extraction',
-          priority: 'High Priority',
-          priorityColor: Color(0xFFF59E0B),
-          priorityBg: Color(0xFFFEF3C7),
-          location: 'Grandpass Ward 10, Colombo',
-          district: 'Colombo District',
-          assignedBy: 'Dispatched by Colombo Command Desk',
-          status: 'In Progress',
-          statusBg: Color(0xFFFEF3C7),
-          statusColor: Color(0xFF92400E),
-          imagePath: 'assets/images/3.jpg',
-          description: 'Main drainage canal overflowing onto residential lanes. Deploy high-capacity water pump to divert flow back to main canal.',
-          latitude: 6.9510,
-          longitude: 79.8750,
-          requiredSpecialty: 'Water Rescue & Boat Unit',
-          opsHotline: '+94 11 267 0002',
-          requiredGear: ['Water Extraction Pump', 'Discharge Hoses', 'Fuel Cans'],
-          routeSteps: [
-            'Follow Prince of Wales Avenue towards Grandpass Market (2.4 km)',
-            'Position pump unit at Canal Sluice Gate 04 (150 m)',
-          ],
-        ),
-      ];
+      _fetchData();
     }
+  }
+
+  Future<void> _fetchData() async {
+    setState(() => _isLoading = true);
+    try {
+      final data = await CrewApiService.instance.fetchMyCrewTasks();
+      final tasksList = data['tasks'] as List? ?? [];
+      
+      final List<CrewAssignment> parsedTasks = tasksList.map((t) {
+        final incident = t['incidents'] ?? {};
+        final requiredGearStr = incident['required_specialty']?.toString() ?? 'Basic Gear';
+        
+        return CrewAssignment(
+          id: t['id']?.toString() ?? '',
+          title: incident['title']?.toString() ?? 'Emergency Dispatch',
+          priority: t['priority']?.toString() ?? 'HIGH',
+          priorityColor: _getPriorityColor(t['priority']?.toString() ?? 'HIGH'),
+          priorityBg: _getPriorityBg(t['priority']?.toString() ?? 'HIGH'),
+          location: '${incident['wards']?['name'] ?? 'Local'}, ${incident['roads']?['name'] ?? 'Road'}',
+          district: AuthService.instance.currentUser?.district ?? 'Colombo',
+          assignedBy: 'Command Center',
+          status: _getFrontendStatus(t['status']?.toString() ?? 'ASSIGNED'),
+          statusBg: _getStatusBg(t['status']?.toString() ?? 'ASSIGNED'),
+          statusColor: _getStatusColor(t['status']?.toString() ?? 'ASSIGNED'),
+          imagePath: _getPlaceholderImage(incident['required_specialty']?.toString() ?? 'WATER_RESCUE'),
+          description: incident['description']?.toString() ?? 'No description provided.',
+          latitude: incident['latitude'] != null ? double.parse(incident['latitude'].toString()) : 6.9,
+          longitude: incident['longitude'] != null ? double.parse(incident['longitude'].toString()) : 79.8,
+          requiredSpecialty: incident['required_specialty']?.toString() ?? 'General Rescue',
+          opsHotline: '+94 11 267 0000',
+          requiredGear: [requiredGearStr],
+          routeSteps: const ['Follow live GPS routing to the incident location.', 'Maintain communication with command.'],
+        );
+      }).toList();
+
+      setState(() {
+        _activeDispatches = parsedTasks.where((t) => t.status != 'Completed').toList();
+        _resolvedDispatches = parsedTasks.where((t) => t.status == 'Completed').toList();
+      });
+    } catch (e) {
+      // Failed to load
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Color _getPriorityColor(String p) {
+    if (p == 'URGENT' || p == 'CRITICAL') return const Color(0xFFEF4444);
+    if (p == 'HIGH') return const Color(0xFFF59E0B);
+    return const Color(0xFF3B82F6);
+  }
+
+  Color _getPriorityBg(String p) {
+    if (p == 'URGENT' || p == 'CRITICAL') return const Color(0xFFFEE2E2);
+    if (p == 'HIGH') return const Color(0xFFFEF3C7);
+    return const Color(0xFFDBEAFE);
+  }
+
+  String _getFrontendStatus(String status) {
+    if (status == 'RESOLVED') return 'Completed';
+    if (status == 'IN_PROGRESS') return 'On Scene';
+    return 'Assigned';
+  }
+
+  Color _getStatusBg(String status) {
+    if (status == 'RESOLVED') return const Color(0xFFDCFCE7);
+    if (status == 'IN_PROGRESS') return const Color(0xFFFEF3C7);
+    return const Color(0xFFDBEAFE);
+  }
+
+  Color _getStatusColor(String status) {
+    if (status == 'RESOLVED') return const Color(0xFF16A34A);
+    if (status == 'IN_PROGRESS') return const Color(0xFF92400E);
+    return const Color(0xFF1E40AF);
+  }
+  
+  String _getPlaceholderImage(String spec) {
+    if (spec.contains('WATER')) return 'assets/images/1.jpg';
+    if (spec.contains('4X4') || spec.contains('DEBRIS')) return 'assets/images/3.jpg';
+    return 'assets/images/2.jpg';
   }
 
   void _showSwitchSquadModal(BuildContext context) {
@@ -615,8 +540,99 @@ class _CrewAssignmentsScreenState extends State<CrewAssignmentsScreen> {
     return AnimatedBuilder(
       animation: AuthService.instance,
       builder: (context, _) {
-        final user = AuthService.instance.currentUser ?? AuthService.waterRescueLead;
-        final dispatches = _getAssignmentsForCurrentCrew(user);
+        final currentUser = AuthService.instance.currentUser;
+        final bool isOfficialCrew = currentUser != null && currentUser.isFieldCrew;
+
+        // STRICT ACCESS CONTROL: Non-crews are completely blocked
+        if (!isOfficialCrew) {
+          return Scaffold(
+            backgroundColor: AppColors.background,
+            appBar: AppBar(
+              backgroundColor: AppColors.primaryNavy,
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
+                onPressed: () => context.go('/volunteer-type'),
+              ),
+              title: Text(
+                'Access Restricted',
+                style: GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800),
+              ),
+            ),
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(28),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFFEE2E2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.lock_rounded, color: Color(0xFFDC2626), size: 52),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Official Response Crew Access Only',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.primaryNavy,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'This console is restricted to Municipal Council-assigned Response Crews. Community Volunteers and Citizens cannot access tactical dispatches.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: () => context.push('/login?tab=0&role=FIELD_CREW&redirect=' + Uri.encodeComponent('/crew-assignments')),
+                      icon: const Icon(Icons.badge_rounded, size: 18),
+                      label: Text(
+                        'Sign In with Crew Account',
+                        style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primaryNavy,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: () => context.go('/community-volunteer'),
+                      child: Text(
+                        'Return to Community Volunteer Hub',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF16A34A),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        final user = currentUser;
+
+        if (_isLoading) {
+          return const Scaffold(
+            backgroundColor: AppColors.background,
+            body: Center(child: CircularProgressIndicator(color: AppColors.primaryNavy)),
+          );
+        }
 
         return Scaffold(
           backgroundColor: AppColors.background,
@@ -628,10 +644,10 @@ class _CrewAssignmentsScreenState extends State<CrewAssignmentsScreen> {
               onPressed: () => context.pop(),
             ),
             title: Text(
-              'Emergency Response Command',
+              'Response Command',
               style: GoogleFonts.plusJakartaSans(
                 color: Colors.white,
-                fontSize: 17,
+                fontSize: 16,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -660,6 +676,65 @@ class _CrewAssignmentsScreenState extends State<CrewAssignmentsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // 0. Preview Mode Notice Banner
+                if (!isOfficialCrew)
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFBFDBFE)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.verified_user_outlined, color: Color(0xFF1D4ED8), size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Squad Preview Console (${user.name})',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF1E40AF),
+                                ),
+                              ),
+                              Text(
+                                'Official squad credentials are pre-assigned by Council Officers.',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 11,
+                                  color: const Color(0xFF3B82F6),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () => context.push('/login?tab=0&role=FIELD_CREW&redirect=' + Uri.encodeComponent('/crew-assignments')),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryNavy,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'Crew Sign In',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
                 // 1. Tactical Readiness Banner
                 _buildReadinessBanner(user),
 
@@ -667,11 +742,11 @@ class _CrewAssignmentsScreenState extends State<CrewAssignmentsScreen> {
                 _buildEquipmentManagerCard(user),
 
                 // 3. Tab Bar (Active Dispatches vs Resolved Log)
-                _buildTabSwitcher(dispatches.length),
+                _buildTabSwitcher(_activeDispatches.length),
 
                 // 4. Dispatches List
                 _selectedTab == 0
-                    ? _buildActiveDispatchesList(dispatches)
+                    ? _buildActiveDispatchesList(_activeDispatches)
                     : _buildResolvedLogList(),
               ],
             ),
@@ -767,7 +842,6 @@ class _CrewAssignmentsScreenState extends State<CrewAssignmentsScreen> {
   }
 
   Widget _buildEquipmentManagerCard(UserModel user) {
-    final specialty = user.specialty ?? 'WATER_RESCUE';
     final gear = user.equipment.isNotEmpty ? user.equipment : ['Basic Emergency Equipment'];
 
     return Container(
@@ -782,30 +856,44 @@ class _CrewAssignmentsScreenState extends State<CrewAssignmentsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  const Icon(Icons.military_tech_rounded, color: Color(0xFF0284C7), size: 18),
-                  const SizedBox(width: 6),
-                  Text(
-                    user.crewName ?? 'Specialized Response Unit',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
-                    ),
+              const Icon(Icons.military_tech_rounded, color: Color(0xFF0284C7), size: 18),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  user.crewName ?? 'Specialized Response Unit',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
                   ),
-                ],
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
+              const SizedBox(width: 8),
               InkWell(
                 onTap: () => _showSwitchSquadModal(context),
-                child: Text(
-                  'Switch Squad',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF0284C7),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE0F2FE),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.swap_horiz_rounded, size: 13, color: Color(0xFF0284C7)),
+                      const SizedBox(width: 3),
+                      Text(
+                        'Switch',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF0284C7),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -1072,14 +1160,16 @@ class _CrewAssignmentsScreenState extends State<CrewAssignmentsScreen> {
                 Row(
                   children: [
                     Expanded(
+                      flex: 2,
                       child: OutlinedButton.icon(
                         onPressed: () => _showRouteStepsModal(context, item),
                         icon: const Icon(Icons.navigation_rounded, size: 14),
                         label: Text(
                           'Route',
-                          style: GoogleFonts.plusJakartaSans(fontSize: 12, fontWeight: FontWeight.w700),
+                          style: GoogleFonts.plusJakartaSans(fontSize: 11.5, fontWeight: FontWeight.w700),
                         ),
                         style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
                           foregroundColor: const Color(0xFF0284C7),
                           side: const BorderSide(color: Color(0xFFBAE6FD)),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -1088,17 +1178,20 @@ class _CrewAssignmentsScreenState extends State<CrewAssignmentsScreen> {
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      flex: 2,
+                      flex: 3,
                       child: ElevatedButton.icon(
                         onPressed: () {
                           context.push('/crew-assignment-details', extra: item);
                         },
-                        icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+                        icon: const Icon(Icons.arrow_forward_rounded, size: 15),
                         label: Text(
                           'Open SitRep & Respond',
-                          style: GoogleFonts.plusJakartaSans(fontSize: 12, fontWeight: FontWeight.w700),
+                          style: GoogleFonts.plusJakartaSans(fontSize: 11.5, fontWeight: FontWeight.w700),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
                           backgroundColor: AppColors.primaryNavy,
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -1131,12 +1224,14 @@ class _CrewAssignmentsScreenState extends State<CrewAssignmentsScreen> {
             children: [
               const Icon(Icons.check_circle_rounded, color: AppColors.primaryGreen, size: 18),
               const SizedBox(width: 8),
-              Text(
-                'Kelani River Bund Sandbag Reinforcement',
-                style: GoogleFonts.plusJakartaSans(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 13,
-                  color: AppColors.textPrimary,
+              Expanded(
+                child: Text(
+                  'Kelani River Bund Sandbag Reinforcement',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
               ),
             ],

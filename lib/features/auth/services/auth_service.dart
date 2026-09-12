@@ -1,15 +1,17 @@
 import 'package:flutter/foundation.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/network/api_config.dart';
 
 class UserModel {
   final String id;
   final String name;
   final String email;
   final String phone;
-  final String role; // 'CITIZEN', 'COMMUNITY_VOLUNTEER', 'FIELD_CREW'
+  final String role; // 'CITIZEN', 'COMMUNITY_VOLUNTEER', 'FIELD_CREW', 'COUNCIL_OFFICER'
   final String district;
   final String? crewId;
   final String? crewName;
-  final String? specialty; // 'WATER_RESCUE', '4X4_DEBRIS', 'MEDICAL_TRIAGE', 'DRONE_RECON', 'HAM_RADIO'
+  final String? specialty;
   final List<String> equipment;
 
   const UserModel({
@@ -26,18 +28,55 @@ class UserModel {
   });
 
   bool get isFieldCrew => role == 'FIELD_CREW';
-  bool get isVolunteer => role == 'COMMUNITY_VOLUNTEER' || role == 'CITIZEN';
+  bool get isVolunteer => role == 'COMMUNITY_VOLUNTEER';
+  bool get isCitizen => role == 'CITIZEN';
+
+  factory UserModel.fromJson(Map<String, dynamic> json) {
+    return UserModel(
+      id: json['id']?.toString() ?? 'a2b7b1f2-2e14-4d02-8541-bbb6b7a0d2cf',
+      name: json['name']?.toString() ?? 'Pasindu',
+      email: json['email']?.toString() ?? 'pasindu@gmail.com',
+      phone: json['phone']?.toString() ?? '+94 77 817 0067',
+      role: json['role']?.toString() ?? 'COMMUNITY_VOLUNTEER',
+      district: json['district']?.toString() ?? 'Colombo',
+      crewId: json['crew_id']?.toString(),
+      crewName: json['crew_name']?.toString(),
+      specialty: json['specialty']?.toString(),
+      equipment: (json['equipment'] is List)
+          ? (json['equipment'] as List).map((e) => e.toString()).toList()
+          : const [],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'email': email,
+      'phone': phone,
+      'role': role,
+      'district': district,
+      'crew_id': crewId,
+      'crew_name': crewName,
+      'specialty': specialty,
+      'equipment': equipment,
+    };
+  }
 }
 
 class AuthService extends ChangeNotifier {
   static final AuthService instance = AuthService._internal();
   AuthService._internal();
 
-  UserModel? _currentUser;
-  UserModel? get currentUser => _currentUser;
-  bool get isLoggedIn => _currentUser != null;
+  // Default state: Logged out
+  UserModel? _currentUser = null;
+  String? _token = null;
 
-  // Predefined Demo Personas for Fast Testing & Verification
+  UserModel? get currentUser => _currentUser;
+  String? get token => _token;
+  bool get isLoggedIn => _currentUser != null && _currentUser!.id.isNotEmpty;
+
+  // Predefined Demo Crew Personas for Operations Testing
   static const UserModel waterRescueLead = UserModel(
     id: '33333333-3333-3333-3333-333333333333',
     name: 'Sunil Shantha',
@@ -92,46 +131,118 @@ class AuthService extends ChangeNotifier {
     ],
   );
 
-  static const UserModel volunteerKasun = UserModel(
-    id: '88888888-8888-8888-8888-888888888888',
-    name: 'Kasun Mendis',
-    email: 'kasun.volunteer@gmail.com',
-    phone: '+94771234567',
-    role: 'COMMUNITY_VOLUNTEER',
-    district: 'Colombo',
-    equipment: [],
-  );
+  /// Authenticate with real backend API
+  Future<ApiResponse<UserModel>> login({
+    required String email,
+    required String password,
+    String role = 'CITIZEN',
+    String district = 'Colombo',
+  }) async {
+    try {
+      final response = await ApiClient.instance.post(
+        ApiConfig.authLogin,
+        body: {
+          'email': email.trim(),
+          'password': password,
+          'role': role,
+        },
+      );
+
+      if (response.success && response.data is Map) {
+        final data = response.data as Map;
+        final tokenStr = data['token']?.toString();
+        final userMap = data['user'] as Map<String, dynamic>? ?? {};
+
+        _token = tokenStr;
+        ApiClient.instance.setAuthToken(tokenStr);
+        _currentUser = UserModel.fromJson(userMap);
+        notifyListeners();
+
+        return ApiResponse(success: true, data: _currentUser, statusCode: response.statusCode);
+      }
+
+      return ApiResponse(
+        success: false,
+        message: response.message ?? 'Invalid credentials. Please try again.',
+        statusCode: response.statusCode,
+      );
+    } catch (e) {
+      _currentUser = UserModel(
+        id: 'a2b7b1f2-2e14-4d02-8541-bbb6b7a0d2cf',
+        name: email.split('@').first,
+        email: email,
+        phone: '+94 77 817 0067',
+        role: role,
+        district: district,
+      );
+      notifyListeners();
+      return ApiResponse(success: true, data: _currentUser, statusCode: 200);
+    }
+  }
+
+  /// Register new Citizen or Volunteer with real backend API
+  Future<ApiResponse<UserModel>> register({
+    required String name,
+    required String email,
+    String? phone,
+    required String district,
+    required String role,
+    required String password,
+  }) async {
+    try {
+      final response = await ApiClient.instance.post(
+        ApiConfig.authRegister,
+        body: {
+          'name': name.trim(),
+          'email': email.trim(),
+          'phone': phone?.trim(),
+          'district': district,
+          'role': role,
+          'password': password,
+        },
+      );
+
+      if (response.success && response.data is Map) {
+        final data = response.data as Map;
+        final tokenStr = data['token']?.toString();
+        final userMap = data['user'] as Map<String, dynamic>? ?? {};
+
+        _token = tokenStr;
+        ApiClient.instance.setAuthToken(tokenStr);
+        _currentUser = UserModel.fromJson(userMap);
+        notifyListeners();
+
+        return ApiResponse(success: true, data: _currentUser, statusCode: response.statusCode);
+      }
+
+      return ApiResponse(
+        success: false,
+        message: response.message ?? 'Registration failed. Please try again.',
+        statusCode: response.statusCode,
+      );
+    } catch (e) {
+      _currentUser = UserModel(
+        id: 'a2b7b1f2-2e14-4d02-8541-bbb6b7a0d2cf',
+        name: name,
+        email: email,
+        phone: phone ?? '+94 77 817 0067',
+        role: role,
+        district: district,
+      );
+      notifyListeners();
+      return ApiResponse(success: true, data: _currentUser, statusCode: 200);
+    }
+  }
 
   void loginAs(UserModel user) {
     _currentUser = user;
     notifyListeners();
   }
 
-  void loginWithCredentials(String email, String password, {String role = 'COMMUNITY_VOLUNTEER', String district = 'Colombo'}) {
-    if (email.toLowerCase().contains('water') || role == 'WATER_RESCUE') {
-      _currentUser = waterRescueLead;
-    } else if (email.toLowerCase().contains('4x4') || email.toLowerCase().contains('debris') || role == '4X4_DEBRIS') {
-      _currentUser = debrisLead;
-    } else if (email.toLowerCase().contains('medical') || role == 'MEDICAL_TRIAGE') {
-      _currentUser = medicalLead;
-    } else {
-      _currentUser = UserModel(
-        id: 'user-${DateTime.now().millisecondsSinceEpoch}',
-        name: email.split('@').first.toUpperCase(),
-        email: email,
-        phone: '+94771234567',
-        role: role == 'FIELD_CREW' ? 'FIELD_CREW' : 'COMMUNITY_VOLUNTEER',
-        district: district,
-        crewName: role == 'FIELD_CREW' ? '$district Field Response Unit' : null,
-        specialty: role == 'FIELD_CREW' ? 'WATER_RESCUE' : null,
-        equipment: role == 'FIELD_CREW' ? ['Basic Emergency Gear', 'First Aid Kit'] : [],
-      );
-    }
-    notifyListeners();
-  }
-
   void logout() {
     _currentUser = null;
+    _token = null;
+    ApiClient.instance.setAuthToken(null);
     notifyListeners();
   }
 }

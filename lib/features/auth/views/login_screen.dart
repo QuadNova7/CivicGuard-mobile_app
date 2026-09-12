@@ -51,8 +51,8 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _isRegisterMode = widget.initialTabIndex == 1;
     _role = widget.initialRole ?? 'COMMUNITY_VOLUNTEER';
+    _isRegisterMode = widget.initialTabIndex == 1 && _role != 'FIELD_CREW';
   }
 
   @override
@@ -95,7 +95,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _submitLogin() {
+  Future<void> _submitLogin() async {
     final email = _loginEmailController.text.trim();
     final password = _loginPasswordController.text.trim();
 
@@ -110,16 +110,27 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     setState(() => _isLoading = true);
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        AuthService.instance.loginWithCredentials(email, password, role: _role);
-        _handleSuccess('Signed in successfully!');
-      }
-    });
+    final res = await AuthService.instance.login(
+      email: email,
+      password: password,
+      role: _role,
+    );
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (res.success) {
+      _handleSuccess('Signed in successfully as ' + (res.data?.name ?? 'User') + '!');
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(res.message ?? 'Login failed. Please check credentials.', style: GoogleFonts.plusJakartaSans()),
+          backgroundColor: AppColors.alertCoral,
+        ),
+      );
+    }
   }
 
-  void _submitRegister() {
+  Future<void> _submitRegister() async {
     final name = _regNameController.text.trim();
     final email = _regEmailController.text.trim();
     final phone = _regPhoneController.text.trim();
@@ -136,26 +147,27 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     setState(() => _isLoading = true);
-    Future.delayed(const Duration(milliseconds: 600), () {
-      if (mounted) {
-        setState(() => _isLoading = false);
+    final res = await AuthService.instance.register(
+      name: name,
+      email: email,
+      phone: phone.isNotEmpty ? phone : null,
+      district: _regDistrict,
+      role: _role,
+      password: password,
+    );
+    if (!mounted) return;
+    setState(() => _isLoading = false);
 
-        final newUser = UserModel(
-          id: 'user-${DateTime.now().millisecondsSinceEpoch}',
-          name: name,
-          email: email,
-          phone: phone.isNotEmpty ? phone : '+94 77 000 0000',
-          role: 'COMMUNITY_VOLUNTEER',
-          district: _regDistrict,
-          crewName: null,
-          specialty: null,
-          equipment: [],
-        );
-
-        AuthService.instance.loginAs(newUser);
-        _handleSuccess('Volunteer account registered successfully!');
-      }
-    });
+    if (res.success) {
+      _handleSuccess('Account registered successfully! Welcome ' + (res.data?.name ?? 'Volunteer') + '.');
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(res.message ?? 'Registration failed. Please try again.', style: GoogleFonts.plusJakartaSans()),
+          backgroundColor: AppColors.alertCoral,
+        ),
+      );
+    }
   }
 
   @override
@@ -369,7 +381,98 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
 
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
+
+        // Pre-assigned Crew Notice & Quick-Fill (Only for Response Crew)
+        if (isCrew) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFCBD5E1)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.shield_outlined, color: AppColors.primaryNavy, size: 16),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Officer Pre-Assigned Crews (Tap to Quick-Fill):',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primaryNavy,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    ActionChip(
+                      backgroundColor: const Color(0xFFE0F2FE),
+                      side: const BorderSide(color: Color(0xFFBAE6FD)),
+                      label: Text(
+                        '🌊 Sunil (Water Rescue)',
+                        style: GoogleFonts.plusJakartaSans(fontSize: 10.5, fontWeight: FontWeight.w700, color: const Color(0xFF0369A1)),
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _loginEmailController.text = 'sunil.water@cmc.gov.lk';
+                          _loginPasswordController.text = 'Crew@123';
+                        });
+                      },
+                    ),
+                    ActionChip(
+                      backgroundColor: const Color(0xFFFEF3C7),
+                      side: const BorderSide(color: Color(0xFFFDE68A)),
+                      label: Text(
+                        '🚜 Bandara (4x4 Debris)',
+                        style: GoogleFonts.plusJakartaSans(fontSize: 10.5, fontWeight: FontWeight.w700, color: const Color(0xFFB45309)),
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _loginEmailController.text = 'bandara.4x4@civicguard.lk';
+                          _loginPasswordController.text = 'Crew@123';
+                        });
+                      },
+                    ),
+                    ActionChip(
+                      backgroundColor: const Color(0xFFFEE2E2),
+                      side: const BorderSide(color: Color(0xFFFECACA)),
+                      label: Text(
+                        '🩺 Dr. Nimal (Medical)',
+                        style: GoogleFonts.plusJakartaSans(fontSize: 10.5, fontWeight: FontWeight.w700, color: const Color(0xFFB91C1C)),
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _loginEmailController.text = 'nimal.medical@civicguard.lk';
+                          _loginPasswordController.text = 'Crew@123';
+                        });
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Emergency Response accounts are pre-assigned by Council Officers. Public self-registration is disabled.',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w500,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
 
         // Switch to Register Mode (Only for Volunteers)
         if (!isCrew)

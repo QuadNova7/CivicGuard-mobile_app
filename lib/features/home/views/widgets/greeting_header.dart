@@ -13,17 +13,6 @@ class GreetingHeader extends StatelessWidget {
     this.onProfileTap,
   });
 
-  String _getDynamicGreeting() {
-    final hour = DateTime.now().hour;
-    if (hour >= 5 && hour < 12) {
-      return 'Good morning,';
-    } else if (hour >= 12 && hour < 17) {
-      return 'Good afternoon,';
-    } else {
-      return 'Good evening,';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -31,7 +20,6 @@ class GreetingHeader extends StatelessWidget {
       builder: (context, _) {
         final user = AuthService.instance.currentUser;
         final isLoggedIn = AuthService.instance.isLoggedIn;
-        final greeting = _getDynamicGreeting();
         final name = isLoggedIn && user != null
             ? (user.name.split(' ').first)
             : 'Citizen';
@@ -39,27 +27,27 @@ class GreetingHeader extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. Top Bar: Logo + Brand Name on Left, Notification + Avatar on Right
+            // 1. Top Bar: Logo + Brand Name on Left, Notification + Modern Profile Icon on Right
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // Brand: Logo Badge + "CivicGuard"
+                // Brand: Logo Badge + "CivicGuard" + LIVE Indicator
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      width: 34,
-                      height: 34,
+                      width: 36,
+                      height: 36,
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
                           colors: [Color(0xFF0F2B48), Color(0xFF1E40AF)],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(11),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF0F2B48).withValues(alpha: 0.25),
+                            color: const Color(0xFF0F2B48).withValues(alpha: 0.22),
                             blurRadius: 6,
                             offset: const Offset(0, 2),
                           ),
@@ -69,7 +57,7 @@ class GreetingHeader extends StatelessWidget {
                         child: Icon(
                           Icons.shield_rounded,
                           color: Colors.white,
-                          size: 20,
+                          size: 21,
                         ),
                       ),
                     ),
@@ -117,7 +105,7 @@ class GreetingHeader extends StatelessWidget {
                   ],
                 ),
 
-                // Notification Bell + Avatar
+                // Notification Bell + Clean Modern Profile Icon
                 Row(
                   children: [
                     Stack(
@@ -149,20 +137,32 @@ class GreetingHeader extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(width: 8),
+                    // Clean Profile Avatar Icon Button (No photo image)
                     GestureDetector(
                       onTap: onProfileTap ?? () => context.push('/profile'),
                       child: Container(
-                        width: 34,
-                        height: 34,
+                        width: 36,
+                        height: 36,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
+                          color: const Color(0xFFF1F5F9),
                           border: Border.all(
                             color: isLoggedIn ? const Color(0xFF16A34A) : const Color(0xFFCBD5E1),
-                            width: 1.8,
+                            width: 1.6,
                           ),
-                          image: const DecorationImage(
-                            image: AssetImage('assets/images/4.jpg'),
-                            fit: BoxFit.cover,
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF0F2B48).withValues(alpha: 0.06),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Icon(
+                            isLoggedIn ? Icons.person_rounded : Icons.person_outline_rounded,
+                            size: 20,
+                            color: isLoggedIn ? const Color(0xFF0F2B48) : const Color(0xFF64748B),
                           ),
                         ),
                       ),
@@ -174,11 +174,11 @@ class GreetingHeader extends StatelessWidget {
 
             const SizedBox(height: 12),
 
-            // 2. Dynamic Greeting Headline
+            // 2. Welcoming Headline (Replaced 'Good evening')
             Row(
               children: [
                 Text(
-                  '$greeting $name',
+                  isLoggedIn ? 'Welcome back, $name' : 'Welcome, $name',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 21,
                     fontWeight: FontWeight.w800,
@@ -186,8 +186,8 @@ class GreetingHeader extends StatelessWidget {
                     letterSpacing: -0.4,
                   ),
                 ),
-                const SizedBox(width: 4),
-                const Text('👋', style: TextStyle(fontSize: 18)),
+                const SizedBox(width: 5),
+                const Text('👋', style: TextStyle(fontSize: 19)),
               ],
             ),
             const SizedBox(height: 2),

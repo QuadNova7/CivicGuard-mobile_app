@@ -1,5 +1,5 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -12,9 +12,13 @@ class AutoRotatingQuickActions extends StatefulWidget {
 
 class _AutoRotatingQuickActionsState extends State<AutoRotatingQuickActions>
     with SingleTickerProviderStateMixin {
-  final ScrollController _scrollController = ScrollController();
-  late final AnimationController _animController;
+  late final ScrollController _scrollController;
+  late final Ticker _ticker;
   bool _isUserInteracting = false;
+  Duration _lastElapsed = Duration.zero;
+
+  // Faster, fluid, continuous 60fps/120fps glide speed (pixels/sec)
+  static const double _scrollSpeed = 52.0;
 
   final List<Map<String, dynamic>> _actions = const [
     {
@@ -26,17 +30,17 @@ class _AutoRotatingQuickActionsState extends State<AutoRotatingQuickActions>
       'route': '/donate-categories',
     },
     {
-      'title': 'Track Reports',
-      'subtitle': 'Live status & council audits',
+      'title': 'Track Requests',
+      'subtitle': 'Live status of your SOS tickets',
       'icon': Icons.assignment_outlined,
       'iconColor': Color(0xFF0284C7),
       'iconBg': Color(0xFFE0F2FE),
       'route': '/my-reports',
     },
     {
-      'title': 'Disaster Map',
-      'subtitle': 'Safe detours & hazard zones',
-      'icon': Icons.map_rounded,
+      'title': 'Safe Corridors',
+      'subtitle': 'Bypass verified flood zones',
+      'icon': Icons.alt_route_rounded,
       'iconColor': Color(0xFF16A34A),
       'iconBg': Color(0xFFDCFCE7),
       'route': '/map',
@@ -54,38 +58,27 @@ class _AutoRotatingQuickActionsState extends State<AutoRotatingQuickActions>
   @override
   void initState() {
     super.initState();
-    _animController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 1),
-    )..addListener(_tick);
-    _animController.repeat();
-  }
-
-  void _tick() {
-    if (!_isUserInteracting && mounted && _scrollController.hasClients) {
-      final maxScroll = _scrollController.position.maxScrollExtent;
-      final currentScroll = _scrollController.offset;
-      if (currentScroll >= maxScroll - 50) {
-        _scrollController.jumpTo(0);
-      } else {
-        // Silky smooth, perfectly balanced sub-pixel linear glide
-        _scrollController.jumpTo(currentScroll + 1.25);
+    _scrollController = ScrollController(initialScrollOffset: 5000.0);
+    _ticker = createTicker((elapsed) {
+      if (_lastElapsed == Duration.zero) {
+        _lastElapsed = elapsed;
+        return;
       }
-    }
-  }
+      final double dt = (elapsed - _lastElapsed).inMicroseconds / 1000000.0;
+      _lastElapsed = elapsed;
 
-  @override
-  void didUpdateWidget(covariant AutoRotatingQuickActions oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!_animController.isAnimating) {
-      _animController.repeat();
-    }
+      if (!_isUserInteracting && mounted && _scrollController.hasClients) {
+        final currentOffset = _scrollController.offset;
+        final newOffset = currentOffset + (_scrollSpeed * dt);
+        _scrollController.jumpTo(newOffset);
+      }
+    });
+    _ticker.start();
   }
 
   @override
   void dispose() {
-    _animController.removeListener(_tick);
-    _animController.dispose();
+    _ticker.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -147,7 +140,7 @@ class _AutoRotatingQuickActionsState extends State<AutoRotatingQuickActions>
               if (notification is ScrollStartNotification) {
                 _isUserInteracting = true;
               } else if (notification is ScrollEndNotification) {
-                Future.delayed(const Duration(milliseconds: 600), () {
+                Future.delayed(const Duration(milliseconds: 700), () {
                   if (mounted) {
                     _isUserInteracting = false;
                   }
@@ -159,7 +152,7 @@ class _AutoRotatingQuickActionsState extends State<AutoRotatingQuickActions>
               controller: _scrollController,
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
-              itemCount: 10000,
+              itemCount: 100000,
               itemBuilder: (context, index) {
                 final action = _actions[index % _actions.length];
                 return Container(

@@ -5,6 +5,7 @@ import '../../../core/theme/app_colors.dart';
 import 'widgets/greeting_header.dart';
 import 'widgets/auto_rotating_quick_actions.dart';
 import 'widgets/featured_situation_banner.dart';
+import 'widgets/emergency_hotline_bar.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -15,8 +16,9 @@ class HomeScreen extends StatelessWidget {
       backgroundColor: AppColors.background,
       body: SafeArea(
         bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 2, 16, 76),
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 2, 16, 96),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -244,15 +246,20 @@ class HomeScreen extends StatelessWidget {
                 ],
               ),
 
-              const SizedBox(height: 15),
+              const SizedBox(height: 14),
 
-              // 3. Auto-Rotating Quick Action Carousel (Faster Continuous Marquee)
+              // 3. Auto-Rotating Quick Action Carousel (Faster Continuous Fluid Glide)
               const AutoRotatingQuickActions(),
 
-              const SizedBox(height: 15),
+              const SizedBox(height: 14),
 
-              // 4. Featured Live Situation Room Banner (Sleek Reduced 132px Height)
+              // 4. Featured Live Situation Room Banner
               const FeaturedSituationBanner(),
+
+              const SizedBox(height: 14),
+
+              // 5. 24/7 Emergency Dispatch & Community Safety Hub (Fills Blank Space)
+              const EmergencyHotlineBar(),
             ],
           ),
         ),

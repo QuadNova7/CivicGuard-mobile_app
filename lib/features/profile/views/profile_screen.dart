@@ -4,12 +4,61 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../auth/services/auth_service.dart';
 import '../../auth/views/dialogs/auth_role_dialog.dart';
+import '../../../core/network/api_config.dart';
+import '../../../core/services/local_cache_service.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
   void _showLoginOrRegisterModal(BuildContext context) {
     AuthRoleSelectionDialog.show(context);
+  }
+
+  void _showNetworkSettingsModal(BuildContext context) {
+    final TextEditingController ipController = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Network Settings'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Enter the IP address of the local backend server (e.g. 192.168.1.10)'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: ipController,
+              decoration: const InputDecoration(
+                labelText: 'IP Address',
+                border: OutlineInputBorder(),
+                hintText: '192.168.x.x',
+              ),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final ip = ipController.text.trim();
+              if (ip.isNotEmpty) {
+                ApiConfig.setBaseIp(ip);
+                LocalCacheService.instance.saveBaseIp(ip);
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  SnackBar(content: Text('API IP updated to $ip')),
+                );
+                Navigator.pop(ctx);
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -176,13 +225,15 @@ class ProfileScreen extends StatelessWidget {
                         'Check registered volunteer operations',
                         () => context.push('/volunteer-type'),
                       ),
-                      _buildMenuDivider(),
-                      _buildMenuItem(
-                        Icons.emergency_outlined,
-                        'Tactical Crew Missions',
-                        'Access active dispatched squad tasks',
-                        () => context.push('/crew-assignments'),
-                      ),
+                      if (isLoggedIn && user?.isFieldCrew == true) ...[
+                        _buildMenuDivider(),
+                        _buildMenuItem(
+                          Icons.emergency_outlined,
+                          'Tactical Crew Missions',
+                          'Access active dispatched squad tasks',
+                          () => context.push('/crew-assignments'),
+                        ),
+                      ],
                       _buildMenuDivider(),
                       _buildMenuItem(
                         Icons.inventory_2_outlined,
@@ -233,6 +284,13 @@ class ProfileScreen extends StatelessWidget {
                         'Disaster Helpline & Support',
                         'National Emergency Line 117',
                         () {},
+                      ),
+                      _buildMenuDivider(),
+                      _buildMenuItem(
+                        Icons.settings_ethernet_rounded,
+                        'Network Settings (Dev)',
+                        'Change API Base IP Address',
+                        () => _showNetworkSettingsModal(context),
                       ),
                     ],
                   ),

@@ -122,7 +122,7 @@ class LocationHelper {
       final client = HttpClient();
       client.connectionTimeout = const Duration(seconds: 4);
       final url = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat.toString() + '&lon=' + lng.toString() + '&zoom=18&addressdetails=1',
+        'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=18&addressdetails=1',
       );
       final request = await client.getUrl(url);
       request.headers.set('User-Agent', 'CivicGuard-MobileApp/1.0 (Disaster Response)');

@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/app_colors.dart';
 import 'crew_assignments_screen.dart';
+import '../services/crew_api_service.dart';
 
 class CrewAssignmentDetailsScreen extends StatefulWidget {
   final CrewAssignment assignment;
@@ -26,6 +27,7 @@ class _CrewAssignmentDetailsScreenState extends State<CrewAssignmentDetailsScree
   final List<XFile> _evidencePhotos = [];
   final TextEditingController _sitrepNotesController = TextEditingController();
   int _evacuatedCount = 4;
+  bool _isTransmitting = false;
 
   @override
   void initState() {
@@ -64,6 +66,22 @@ class _CrewAssignmentDetailsScreenState extends State<CrewAssignmentDetailsScree
           SnackBar(content: Text('Could not open camera: $e')),
         );
       }
+    }
+  }
+
+  void _updateStatusBackend(String status, Color color, Color bg) async {
+    setState(() {
+      _currentStatus = status;
+      _statusColor = color;
+      _statusBg = bg;
+    });
+    
+    // Broadcast to backend
+    final success = await CrewApiService.instance.updateTaskStatus(widget.assignment.id, status);
+    if (!success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to broadcast status to command.')),
+      );
     }
   }
 
@@ -117,11 +135,7 @@ class _CrewAssignmentDetailsScreenState extends State<CrewAssignmentDetailsScree
                 bg: const Color(0xFFDBEAFE),
                 onTap: () {
                   Navigator.pop(ctx);
-                  setState(() {
-                    _currentStatus = 'En Route';
-                    _statusColor = const Color(0xFF1E40AF);
-                    _statusBg = const Color(0xFFDBEAFE);
-                  });
+                  _updateStatusBackend('En Route', const Color(0xFF1E40AF), const Color(0xFFDBEAFE));
                 },
               ),
               const SizedBox(height: 8),
@@ -133,11 +147,7 @@ class _CrewAssignmentDetailsScreenState extends State<CrewAssignmentDetailsScree
                 bg: const Color(0xFFFEF3C7),
                 onTap: () {
                   Navigator.pop(ctx);
-                  setState(() {
-                    _currentStatus = 'On Scene';
-                    _statusColor = const Color(0xFFD97706);
-                    _statusBg = const Color(0xFFFEF3C7);
-                  });
+                  _updateStatusBackend('On Scene', const Color(0xFFD97706), const Color(0xFFFEF3C7));
                 },
               ),
               const SizedBox(height: 8),
@@ -149,11 +159,7 @@ class _CrewAssignmentDetailsScreenState extends State<CrewAssignmentDetailsScree
                 bg: const Color(0xFFDCFCE7),
                 onTap: () {
                   Navigator.pop(ctx);
-                  setState(() {
-                    _currentStatus = 'Completed';
-                    _statusColor = const Color(0xFF16A34A);
-                    _statusBg = const Color(0xFFDCFCE7);
-                  });
+                  _updateStatusBackend('Completed', const Color(0xFF16A34A), const Color(0xFFDCFCE7));
                 },
               ),
             ],
@@ -441,12 +447,14 @@ class _CrewAssignmentDetailsScreenState extends State<CrewAssignmentDetailsScree
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Civilians Rescued / Evacuated:',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF334155),
+                    Expanded(
+                      child: Text(
+                        'Civilians Rescued / Evacuated:',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF334155),
+                        ),
                       ),
                     ),
                     Row(
@@ -552,14 +560,40 @@ class _CrewAssignmentDetailsScreenState extends State<CrewAssignmentDetailsScree
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Field SitRep transmitted to Operations Command!'),
-                          backgroundColor: Color(0xFF16A34A),
-                          behavior: SnackBarBehavior.floating,
-                        ),
+                    onPressed: _isTransmitting ? null : () async {
+                      setState(() => _isTransmitting = true);
+                      
+                      final photo = _evidencePhotos.isNotEmpty ? File(_evidencePhotos.first.path) : null;
+                      
+                      final success = await CrewApiService.instance.submitSitRep(
+                        widget.assignment.id,
+                        _sitrepNotesController.text,
+                        _evacuatedCount,
+                        photo,
                       );
+                      
+                      if (mounted) {
+                        setState(() => _isTransmitting = false);
+                        
+                        if (success) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Field SitRep transmitted to Operations Command!'),
+                              backgroundColor: Color(0xFF16A34A),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                          // Auto update local status to complete
+                          _updateStatusBackend('Completed', const Color(0xFF16A34A), const Color(0xFFDCFCE7));
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Failed to transmit SitRep. Check connection.'),
+                              backgroundColor: Color(0xFFEF4444),
+                            ),
+                          );
+                        }
+                      }
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primaryNavy,
@@ -567,7 +601,9 @@ class _CrewAssignmentDetailsScreenState extends State<CrewAssignmentDetailsScree
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
-                    child: const Text('Transmit Ground SitRep'),
+                    child: _isTransmitting 
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Text('Transmit Ground SitRep'),
                   ),
                 ),
               ],

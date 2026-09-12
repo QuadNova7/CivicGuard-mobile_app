@@ -1,3 +1,5 @@
+import 'package:latlong2/latlong.dart';
+import '../../features/auth/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/splash/views/splash_screen.dart';
@@ -85,6 +87,31 @@ final GoRouter appRouter = GoRouter(
 
     // 2. Physical Donations Flow
     GoRoute(
+      path: '/donate-supplies-form',
+      builder: (context, state) {
+        String category = 'Food & Water';
+        int? iconCode;
+        int? iconColorValue;
+        if (state.extra is Map) {
+          final map = state.extra as Map;
+          category = map['category']?.toString() ?? 'Food & Water';
+          if (map['iconCode'] is int) iconCode = map['iconCode'] as int;
+          if (map['iconColor'] is int) iconColorValue = map['iconColor'] as int;
+        } else if (state.extra is String) {
+          category = state.extra as String;
+        }
+        return DonateSuppliesFormScreen(
+          category: category,
+          iconCode: iconCode,
+          iconColorValue: iconColorValue,
+        );
+      },
+    ),
+    GoRoute(
+      path: '/donate',
+      builder: (context, state) => const DonationCategoryScreen(),
+    ),
+    GoRoute(
       path: '/donate-categories',
       builder: (context, state) => const DonationCategoryScreen(),
     ),
@@ -142,6 +169,13 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: '/community-volunteer',
+      redirect: (context, state) {
+        final isLoggedIn = AuthService.instance.isLoggedIn;
+        if (!isLoggedIn) {
+          return '/login?tab=0&role=COMMUNITY_VOLUNTEER&redirect=${Uri.encodeComponent('/community-volunteer')}';
+        }
+        return null;
+      },
       builder: (context, state) {
         final initialTab = (state.extra is num) ? (state.extra as num).toInt() : 0;
         return CommunityVolunteerScreen(initialTabIndex: initialTab);
@@ -198,13 +232,27 @@ final GoRouter appRouter = GoRouter(
       },
     ),
 
-    // 4. Response Crew Operations
+    // 4. Response Crew Operations (Strict Role Protected Guard)
     GoRoute(
       path: '/crew-assignments',
+      redirect: (context, state) {
+        final user = AuthService.instance.currentUser;
+        if (user == null || !user.isFieldCrew) {
+          return '/volunteer-type';
+        }
+        return null;
+      },
       builder: (context, state) => const CrewAssignmentsScreen(),
     ),
     GoRoute(
       path: '/crew-assignment-details',
+      redirect: (context, state) {
+        final user = AuthService.instance.currentUser;
+        if (user == null || !user.isFieldCrew) {
+          return '/volunteer-type';
+        }
+        return null;
+      },
       builder: (context, state) {
         final assignment = (state.extra is CrewAssignment)
             ? state.extra as CrewAssignment
@@ -230,7 +278,10 @@ final GoRouter appRouter = GoRouter(
 
     GoRoute(
       path: '/map',
-      builder: (context, state) => const NearbyReportsScreen(),
+      builder: (context, state) {
+        final target = state.extra as LatLng?;
+        return NearbyReportsScreen(targetDestination: target);
+      },
     ),
     GoRoute(
       path: '/profile',

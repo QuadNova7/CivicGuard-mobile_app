@@ -1,195 +1,231 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../auth/services/auth_service.dart';
+import '../../auth/views/dialogs/auth_role_dialog.dart';
 
 class VolunteerTypeScreen extends StatelessWidget {
   const VolunteerTypeScreen({super.key});
 
+  void _navigateToCommunityVolunteer(BuildContext context) {
+    if (!AuthService.instance.isLoggedIn) {
+      context.push('/login', extra: {
+        'redirect': '/community-volunteer',
+        'role': 'COMMUNITY_VOLUNTEER',
+        'tab': 0,
+      });
+      return;
+    }
+    context.push('/community-volunteer');
+  }
+
+  void _navigateToResponseCrew(BuildContext context) {
+    if (!AuthService.instance.isLoggedIn) {
+      context.push('/login?tab=0&role=FIELD_CREW&redirect=' + Uri.encodeComponent('/crew-assignments'));
+      return;
+    }
+
+    final user = AuthService.instance.currentUser;
+    if (user == null || !user.isFieldCrew) {
+      // STRICT BLOCK: Community Volunteers and Citizens CANNOT access Emergency Response Crew
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEE2E2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.lock_rounded, color: Color(0xFFDC2626), size: 22),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Access Restricted',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primaryNavy,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'You are currently signed in as a ${user?.role == "COMMUNITY_VOLUNTEER" ? "Community Volunteer" : "Citizen"} (${user?.name ?? "User"}).',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1E293B),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Text(
+                  'Emergency Response Crew consoles are strictly reserved for tactical rescue squads pre-assigned by Municipal Council Officers.\n\nCommunity Volunteers cannot register for or access Response Crew dispatches. Please continue in the Community Volunteer track, or sign in with an authorized crew account.',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    color: const Color(0xFF475569),
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(
+                'Stay as Volunteer',
+                style: GoogleFonts.plusJakartaSans(
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                context.push('/login?tab=0&role=FIELD_CREW&redirect=' + Uri.encodeComponent('/crew-assignments'));
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryNavy,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                elevation: 0,
+              ),
+              child: Text(
+                'Sign In as Crew',
+                style: GoogleFonts.plusJakartaSans(
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    context.push('/crew-assignments');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
+        backgroundColor: AppColors.primaryNavy,
         elevation: 0,
-        backgroundColor: Colors.transparent,
         leading: IconButton(
-          icon: Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: const Icon(Icons.arrow_back_rounded, size: 18, color: Color(0xFF0F2B48)),
-          ),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
           onPressed: () {
-            if (context.canPop()) {
+            if (Navigator.canPop(context)) {
               context.pop();
             } else {
-              context.go('/home');
+              context.go('/main');
             }
           },
         ),
         title: Text(
-          'Volunteer & Response',
+          'Volunteer & Field Response',
           style: GoogleFonts.plusJakartaSans(
-            fontSize: 17,
+            fontSize: 16.5,
             fontWeight: FontWeight.w800,
-            color: const Color(0xFF0F2B48),
-            letterSpacing: -0.3,
+            color: Colors.white,
           ),
         ),
-        centerTitle: true,
+        centerTitle: false,
         actions: [
           IconButton(
-            icon: Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: const Icon(Icons.account_circle_outlined, size: 20, color: Color(0xFF0F2B48)),
-            ),
             onPressed: () => context.push('/profile'),
+            icon: const Icon(Icons.account_circle_outlined, color: Colors.white, size: 22),
+            tooltip: 'Profile',
           ),
-          const SizedBox(width: 6),
         ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. Sleek Modern Status Ribbon
-              _buildModernStatusRibbon(context),
+              // 1. Sleek Status / Auth Ribbon
+              _buildAuthStatusRibbon(context),
 
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
 
-              // 2. Section Subtitle
+              // 2. Subtitle
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Text(
                   'Select your operational track to support disaster relief:',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
-                    color: const Color(0xFF64748B),
-                    height: 1.3,
+                    color: AppColors.textSecondary,
                   ),
                 ),
               ),
 
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
 
-              // 3. Track 1: Community Volunteer (Ultra-Modern Emerald Glassmorphic Card)
-              _buildUltraModernTrackCard(
+              // 3. Card 1: Community Volunteer
+              _buildCompactTrackCard(
                 context: context,
                 title: 'Community Volunteer',
-                tag: '🌿 Open Volunteer Network',
+                tag: 'Open to All Citizens',
                 tagBg: const Color(0xFFDCFCE7),
-                tagColor: const Color(0xFF15803D),
-                tagBorder: const Color(0xFF86EFAC),
+                tagColor: const Color(0xFF16A34A),
                 icon: Icons.volunteer_activism_rounded,
-                iconGradient: const LinearGradient(
-                  colors: [Color(0xFF059669), Color(0xFF10B981)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                cardGradient: const LinearGradient(
-                  colors: [Color(0xFFFFFFFF), Color(0xFFF0FDF4)],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
-                borderColor: const Color(0xFF10B981).withValues(alpha: 0.35),
-                glowShadowColor: const Color(0xFF10B981).withValues(alpha: 0.10),
-                subtitle: 'Distribute food rations, emergency shelter aid & assist displaced families.',
-                featureChips: [
-                  '📦 Food & Rations',
-                  '🏥 Shelter Ops',
-                  '🤝 On-Site Check-In',
-                  '📜 Service Hours',
+                iconBg: const Color(0xFFF0FDF4),
+                iconColor: const Color(0xFF16A34A),
+                subtitle: 'Distribute dry rations, local aid & assist in relief shelters.',
+                bullets: const [
+                  'Distribute food, water & medical care packs',
+                  'Support nearest relief shelters in your district',
                 ],
                 buttonText: 'Join Community Efforts',
-                buttonGradient: const LinearGradient(
-                  colors: [Color(0xFF059669), Color(0xFF10B981)],
-                ),
-                buttonShadowColor: const Color(0xFF10B981),
-                onTap: () {
-                  final isLoggedIn = AuthService.instance.isLoggedIn;
-                  if (!isLoggedIn) {
-                    _showVolunteerAuthModal(context);
-                  } else {
-                    context.push('/community-volunteer');
-                  }
-                },
+                buttonColor: const Color(0xFF16A34A),
+                onTap: () => _navigateToCommunityVolunteer(context),
               ),
 
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
 
-              // 4. Track 2: Emergency Response Crew (Ultra-Modern Sapphire Tactical Card)
-              _buildUltraModernTrackCard(
+              // 4. Card 2: Emergency Response Crew
+              _buildCompactTrackCard(
                 context: context,
                 title: 'Emergency Response Crew',
-                tag: '🛡️ Tactical Certification',
+                tag: 'Tactical Certification',
                 tagBg: const Color(0xFFDBEAFE),
                 tagColor: const Color(0xFF1E40AF),
-                tagBorder: const Color(0xFF93C5FD),
                 icon: Icons.medical_services_rounded,
-                iconGradient: const LinearGradient(
-                  colors: [Color(0xFF0F2B48), Color(0xFF1E40AF)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                cardGradient: const LinearGradient(
-                  colors: [Color(0xFFFFFFFF), Color(0xFFF0F9FF)],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
-                borderColor: const Color(0xFF2563EB).withValues(alpha: 0.35),
-                glowShadowColor: const Color(0xFF1E40AF).withValues(alpha: 0.10),
-                subtitle: 'Authorized municipal rescue squads executing real-time council dispatch orders.',
-                featureChips: [
-                  '🌊 Water Rescue',
-                  '🚜 4x4 Heavy Winch',
-                  '🚑 Medical Triage',
-                  '📡 GPS Field SitRep',
+                iconBg: const Color(0xFFEFF6FF),
+                iconColor: const Color(0xFF2563EB),
+                subtitle: 'Specialized rescue units responding to officer dispatches.',
+                bullets: const [
+                  'Water rescue, 4x4 winching & medical triage',
+                  'Ground SitRep, GPS tracking & incident closure',
                 ],
                 buttonText: 'Enter Crew Command',
-                buttonGradient: const LinearGradient(
-                  colors: [Color(0xFF0F2B48), Color(0xFF1E40AF)],
-                ),
-                buttonShadowColor: const Color(0xFF0F2B48),
-                onTap: () {
-                  final user = AuthService.instance.currentUser;
-                  if (user != null && user.isFieldCrew) {
-                    context.push('/crew-assignments');
-                  } else {
-                    _showCrewLockDialog(context);
-                  }
-                },
+                buttonColor: AppColors.primaryNavy,
+                onTap: () => _navigateToResponseCrew(context),
               ),
-
-              const SizedBox(height: 14),
             ],
           ),
         ),
@@ -197,7 +233,7 @@ class VolunteerTypeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildModernStatusRibbon(BuildContext context) {
+  Widget _buildAuthStatusRibbon(BuildContext context) {
     return AnimatedBuilder(
       animation: AuthService.instance,
       builder: (context, _) {
@@ -206,76 +242,38 @@ class VolunteerTypeScreen extends StatelessWidget {
 
         if (!isLoggedIn || user == null) {
           return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFFFFBEB), Color(0xFFFEF3C7)],
-              ),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFFCD34D), width: 1.1),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFFD97706).withValues(alpha: 0.06),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+              color: const Color(0xFFFEF3C7),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFFDE68A)),
             ),
             child: Row(
               children: [
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFDE68A),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFFD97706).withValues(alpha: 0.3)),
-                  ),
-                  child: const Icon(Icons.lock_person_rounded, color: Color(0xFFB45309), size: 16),
-                ),
-                const SizedBox(width: 10),
+                const Icon(Icons.info_outline_rounded, color: Color(0xFFD97706), size: 16),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Volunteer Account Required',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF92400E),
-                        ),
-                      ),
-                      Text(
-                        'Sign in or register to join active squads.',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                          color: const Color(0xFFB45309),
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    'Guest Mode: Sign in to log and sync relief missions.',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF92400E),
+                    ),
                   ),
                 ),
                 GestureDetector(
-                  onTap: () => _showVolunteerAuthModal(context),
+                  onTap: () => AuthRoleSelectionDialog.show(context, redirectPath: '/volunteer-type'),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFD97706),
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFFD97706).withValues(alpha: 0.25),
-                          blurRadius: 4,
-                          offset: const Offset(0, 1),
-                        ),
-                      ],
+                      color: AppColors.primaryNavy,
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
                       'Sign In',
                       style: GoogleFonts.plusJakartaSans(
-                        fontSize: 11,
+                        fontSize: 10.5,
                         fontWeight: FontWeight.w800,
                         color: Colors.white,
                       ),
@@ -287,57 +285,36 @@ class VolunteerTypeScreen extends StatelessWidget {
           );
         }
 
+        final roleName = user.role == 'COMMUNITY_VOLUNTEER' ? 'Volunteer' : (user.role == 'FIELD_CREW' ? 'Response Crew' : 'Citizen');
+
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFFF0FDF4), Color(0xFFDCFCE7)],
-            ),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFF86EFAC), width: 1.1),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF16A34A).withValues(alpha: 0.06),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
+            color: const Color(0xFFF0FDF4),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFBBF7D0)),
           ),
           child: Row(
             children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFBBF7D0),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.verified_rounded, color: Color(0xFF16A34A), size: 16),
-              ),
-              const SizedBox(width: 10),
+              const Icon(Icons.verified_user_rounded, color: Color(0xFF16A34A), size: 16),
+              const SizedBox(width: 8),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Signed In: ${user.name}',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFF166534),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      'Role: ${user.role}  •  District: ${user.district}',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF15803D),
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  'Signed in: ' + user.name + ' (' + roleName + ')',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF166534),
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: () => AuthService.instance.logout(),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4),
+                  child: Icon(Icons.logout_rounded, color: Color(0xFF166534), size: 16),
                 ),
               ),
             ],
@@ -347,411 +324,156 @@ class VolunteerTypeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildUltraModernTrackCard({
+  Widget _buildCompactTrackCard({
     required BuildContext context,
     required String title,
     required String tag,
     required Color tagBg,
     required Color tagColor,
-    required Color tagBorder,
     required IconData icon,
-    required LinearGradient iconGradient,
-    required LinearGradient cardGradient,
-    required Color borderColor,
-    required Color glowShadowColor,
+    required Color iconBg,
+    required Color iconColor,
     required String subtitle,
-    required List<String> featureChips,
+    required List<String> bullets,
     required String buttonText,
-    required LinearGradient buttonGradient,
-    required Color buttonShadowColor,
+    required Color buttonColor,
     required VoidCallback onTap,
   }) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        gradient: cardGradient,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: borderColor, width: 1.3),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
         boxShadow: [
           BoxShadow(
-            color: glowShadowColor,
-            blurRadius: 18,
-            offset: const Offset(0, 5),
-          ),
-          BoxShadow(
-            color: const Color(0xFF0F2B48).withValues(alpha: 0.03),
+            color: Colors.black.withOpacity(0.03),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(15),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Top Row: 3D Squircle Icon + Title + Pill
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    gradient: iconGradient,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: buttonShadowColor.withValues(alpha: 0.32),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: Icon(icon, color: Colors.white, size: 22),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Row: Icon + Title + Tag
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: iconBg,
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF0F2B48),
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: tagBg,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: tagBorder, width: 0.8),
-                        ),
-                        child: Text(
-                          tag,
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w800,
-                            color: tagColor,
+                child: Icon(icon, color: iconColor, size: 22),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 10),
-
-            // Subtitle Description
-            Text(
-              subtitle,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: const Color(0xFF475569),
-                height: 1.35,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-
-            const SizedBox(height: 10),
-
-            // Modern Feature Chips Grid (2x2 Wrap)
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: featureChips.map((chip) {
-                return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.02),
-                        blurRadius: 4,
-                        offset: const Offset(0, 1),
-                      ),
-                    ],
-                  ),
-                  child: Text(
-                    chip,
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF334155),
+                      ],
                     ),
-                  ),
-                );
-              }).toList(),
-            ),
-
-            const SizedBox(height: 12),
-
-            // Modern Call-To-Action Button
-            Container(
-              width: double.infinity,
-              height: 42,
-              decoration: BoxDecoration(
-                gradient: buttonGradient,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: buttonShadowColor.withValues(alpha: 0.32),
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: onTap,
-                  borderRadius: BorderRadius.circular(12),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        buttonText,
+                    const SizedBox(height: 2),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: tagBg,
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: Text(
+                        tag,
                         style: GoogleFonts.plusJakartaSans(
-                          fontSize: 13,
+                          fontSize: 9,
                           fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: 0.1,
+                          color: tagColor,
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      Container(
-                        width: 20,
-                        height: 20,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.22),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 13),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // POPUP MODAL: Community Volunteer Auth Modal (Sign In / Register)
-  void _showVolunteerAuthModal(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Drag Handle
-            Container(
-              width: 38,
-              height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFFCBD5E1),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 18),
-
-            // Emerald Beacon Icon
-            Container(
-              width: 58,
-              height: 58,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF059669), Color(0xFF10B981)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.3),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: const Icon(Icons.volunteer_activism_rounded, color: Colors.white, size: 30),
-            ),
-
-            const SizedBox(height: 14),
-
-            Text(
-              'Community Volunteer Access',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFF0F2B48),
-                letterSpacing: -0.3,
-              ),
-            ),
-
-            const SizedBox(height: 6),
-
-            Text(
-              'Sign in or register your account to join active relief squads, log field hours, and receive real-time operation briefings.',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 12.5,
-                color: const Color(0xFF64748B),
-                height: 1.4,
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // Option 1: Sign In
-            Container(
-              width: double.infinity,
-              height: 48,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF0F2B48), Color(0xFF1E40AF)],
-                ),
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF0F2B48).withValues(alpha: 0.25),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  context.push('/login?tab=0&role=COMMUNITY_VOLUNTEER&redirect=/community-volunteer');
-                },
-                icon: const Icon(Icons.login_rounded, color: Colors.white, size: 18),
-                label: Text(
-                  'Sign In to Volunteer Account',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 10),
-
-            // Option 2: Register
-            Container(
-              width: double.infinity,
-              height: 48,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF0FDF4),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFF10B981), width: 1.3),
-              ),
-              child: TextButton.icon(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  context.push('/login?tab=1&role=COMMUNITY_VOLUNTEER&redirect=/community-volunteer');
-                },
-                icon: const Icon(Icons.person_add_alt_1_rounded, color: Color(0xFF059669), size: 18),
-                label: Text(
-                  'Register as New Volunteer',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF059669),
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            // Cancel button
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(
-                'Cancel',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF94A3B8),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showCrewLockDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: const Color(0xFFDBEAFE),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(Icons.shield_rounded, color: Color(0xFF1E40AF), size: 20),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Field Crew Access',
-                style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800, fontSize: 16),
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          'Emergency Response Crew Console requires official Municipal Council credentials. If you are an active crew member, please sign in.',
-          style: GoogleFonts.plusJakartaSans(fontSize: 13, color: const Color(0xFF475569), height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel', style: GoogleFonts.plusJakartaSans(color: const Color(0xFF64748B))),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              context.push('/login?tab=0&role=FIELD_CREW&redirect=/crew-assignments');
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0F2B48),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+
+          const SizedBox(height: 8),
+
+          // Subtitle
+          Text(
+            subtitle,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textSecondary,
+              height: 1.3,
             ),
-            child: Text('Crew Login', style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.w700)),
+          ),
+
+          const SizedBox(height: 8),
+
+          // Key Bullets
+          ...bullets.map((b) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 14),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        b,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF334155),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )),
+
+          const SizedBox(height: 10),
+
+          // Action Button
+          SizedBox(
+            width: double.infinity,
+            
+            height: 40,
+            child: ElevatedButton(
+              onPressed: onTap,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: buttonColor,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    buttonText,
+                    style: GoogleFonts.plusJakartaSans(fontSize: 13, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.arrow_forward_rounded, size: 15),
+                ],
+              ),
+            ),
           ),
         ],
       ),

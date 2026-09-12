@@ -2,8 +2,17 @@ import 'package:flutter/material.dart';
 import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
 
-void main() {
+import 'core/services/local_cache_service.dart';
+import 'core/network/api_config.dart';
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  final savedIp = await LocalCacheService.instance.getBaseIp();
+  if (savedIp != null && savedIp.isNotEmpty) {
+    ApiConfig.setBaseIp(savedIp);
+  }
+  
   runApp(const CivicGuardApp());
 }
 
