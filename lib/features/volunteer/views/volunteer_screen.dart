@@ -61,7 +61,7 @@ class _VolunteerScreenState extends State<VolunteerScreen> {
                 children: [
                   Text('Make a Difference', style: AppTextStyles.headingMedium.copyWith(color: Colors.white)),
                   const SizedBox(height: 4),
-                  Text('Join hands for a safer tomorrow.', style: AppTextStyles.bodyMedium.copyWith(color: Colors.white.withOpacity(0.9))),
+                  Text('Join hands for a safer tomorrow.', style: AppTextStyles.bodyMedium.copyWith(color: Colors.white.withValues(alpha: 0.9))),
                 ],
               ),
             ),

@@ -4,6 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/location_helper.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/network/api_config.dart';
+import '../../../core/services/local_cache_service.dart';
+import '../../auth/services/auth_service.dart';
+import 'package:latlong2/latlong.dart';
 
 class VolunteerOpportunity {
   final String id;
@@ -60,6 +65,50 @@ class VolunteerOpportunity {
       'Enter via Gate 2 to reach Volunteer Assembly Desk (100 m)',
     ],
   });
+
+  factory VolunteerOpportunity.fromJson(Map<String, dynamic> json) {
+    final statusStr = json['status']?.toString() ?? 'Active';
+    Color sBg = const Color(0xFFDCFCE7);
+    Color sColor = const Color(0xFF16A34A);
+    if (statusStr.toLowerCase().contains('urgent')) {
+      sBg = const Color(0xFFFEE2E2);
+      sColor = const Color(0xFFDC2626);
+    } else if (statusStr.toLowerCase().contains('high')) {
+      sBg = const Color(0xFFFEF3C7);
+      sColor = const Color(0xFFD97706);
+    }
+
+    return VolunteerOpportunity(
+      id: json['id']?.toString() ?? 'vol-001',
+      title: json['title']?.toString() ?? 'Community Relief Drive',
+      category: json['category']?.toString() ?? 'Food & Water',
+      district: json['district']?.toString() ?? 'Colombo',
+      status: statusStr,
+      statusBg: sBg,
+      statusColor: sColor,
+      location: json['location']?.toString() ?? 'Emergency Relief Center',
+      latitude: (json['latitude'] as num?)?.toDouble() ?? 6.9271,
+      longitude: (json['longitude'] as num?)?.toDouble() ?? 79.8612,
+      date: json['date']?.toString() ?? 'Today',
+      volunteersNeeded: json['volunteers_needed']?.toString() ?? '15/25 Volunteers',
+      currentJoined: (json['current_joined'] as num?)?.toInt() ?? 15,
+      totalNeeded: (json['total_needed'] as num?)?.toInt() ?? 25,
+      imagePath: json['image_path']?.toString() ?? 'assets/images/1.jpg',
+      description: json['description']?.toString() ?? 'Community disaster relief operation',
+      requirements: (json['requirements'] is List)
+          ? (json['requirements'] as List).map((e) => e.toString()).toList()
+          : ['Age 18+', 'Bring personal water bottle', 'Wear comfortable clothes'],
+      coordinatorName: json['coordinator_name']?.toString() ?? 'Municipal Relief Coordinator',
+      coordinatorPhone: json['coordinator_phone']?.toString() ?? '+94 11 269 1111',
+      assemblyPoint: json['assembly_point']?.toString() ?? 'Relief Center Main Reception Desk',
+      announcements: (json['announcements'] is List)
+          ? (json['announcements'] as List).map((e) => e.toString()).toList()
+          : ['Relief consignments arriving on-site. Check in at registration desk.'],
+      routeSteps: (json['route_steps'] is List)
+          ? (json['route_steps'] as List).map((e) => e.toString()).toList()
+          : ['Proceed along main road toward designated relief shelter assembly point'],
+    );
+  }
 }
 
 class JoinedActivity {
@@ -171,220 +220,32 @@ class _CommunityVolunteerScreenState extends State<CommunityVolunteerScreen>
     'Vavuniya',
   ];
 
-  final List<VolunteerOpportunity> _opportunities = const [
-    VolunteerOpportunity(
-      id: 'vol-1',
-      title: 'Food Ration Packing Drive',
-      category: 'Food & Water',
-      district: 'Colombo',
-      status: 'Urgent Today',
-      statusBg: Color(0xFFFEE2E2),
-      statusColor: Color(0xFFDC2626),
-      location: 'St. Thomas Relief Center, Mount Lavinia',
-      latitude: 6.8340,
-      longitude: 79.8650,
-      date: 'Today, 2:00 PM - 6:00 PM',
-      volunteersNeeded: '18/25 Volunteers',
-      currentJoined: 18,
-      totalNeeded: 25,
-      imagePath: 'assets/images/1.jpg',
-      description:
-          'Help sort, pack, and seal 500 dry ration packs containing rice, dhal, and canned goods for displaced families across Colombo South.',
-      requirements: [
-        'Wear comfortable footwear and clothes',
-        'Bring a reusable water bottle',
-        'Basic physical lifting capability (up to 10kg)',
-      ],
-      coordinatorName: 'Squad Leader Kamalanatha',
-      coordinatorPhone: '+94 77 345 8920',
-      assemblyPoint: 'Gate 2 Community Hall, Ground Floor Registration Desk',
-      announcements: [
-        'Relief packing boxes arrived at Hall B. Please check in at Gate 2.',
-        'Volunteer parking arranged at Temple grounds opposite center.',
-      ],
-      routeSteps: [
-        'Head north on Galle Road toward Mount Lavinia junction (1.2 km)',
-        'Turn left at Station Road toward St. Thomas Relief Center (450 m)',
-        'Enter via Gate 2 to reach Volunteer Assembly Desk (100 m)',
-      ],
-    ),
-    VolunteerOpportunity(
-      id: 'vol-2',
-      title: 'Emergency Medical Camp Setup',
-      category: 'First Aid Camp',
-      district: 'Kalutara',
-      status: 'High Priority',
-      statusBg: Color(0xFFFEF3C7),
-      statusColor: Color(0xFFD97706),
-      location: 'Wadduwa Central Dispensary Grounds',
-      latitude: 6.6667,
-      longitude: 79.9333,
-      date: 'Tomorrow, 8:00 AM - 1:00 PM',
-      volunteersNeeded: '12/15 Volunteers',
-      currentJoined: 12,
-      totalNeeded: 15,
-      imagePath: 'assets/images/2.jpg',
-      description:
-          'Assist doctors and certified nurses with patient intake registration, guiding elderly residents, and distributing first aid medical kits.',
-      requirements: [
-        'Patience and compassionate communication',
-        'Fluent in Sinhala or Tamil (English is a bonus)',
-        'Prior first-aid certificate preferred but not mandatory',
-      ],
-      coordinatorName: 'Dr. Priyantha Silva',
-      coordinatorPhone: '+94 71 889 2341',
-      assemblyPoint: 'Wadduwa Central Dispensary Main Lobby Registration',
-      announcements: [
-        'Mobile clinic van arriving at 07:30 AM.',
-        'Sanitizer and medical masks provided at the check-in desk.',
-      ],
-      routeSteps: [
-        'Drive south along Galle Road into Wadduwa town (8.4 km)',
-        'Turn right at Dispensary Lane opposite the Clock Tower (200 m)',
-        'Park at Front Lawn and report to Triage Tent (50 m)',
-      ],
-    ),
-    VolunteerOpportunity(
-      id: 'vol-3',
-      title: 'Flood Debris & Canal Clearance',
-      category: 'Street Cleanup',
-      district: 'Colombo',
-      status: 'Open',
-      statusBg: Color(0xFFDCFCE7),
-      statusColor: Color(0xFF16A34A),
-      location: 'Wellawatte Canal Bank & Marine Drive',
-      latitude: 6.8780,
-      longitude: 79.8590,
-      date: 'Sunday, 7:00 AM - 11:30 AM',
-      volunteersNeeded: '34/50 Volunteers',
-      currentJoined: 34,
-      totalNeeded: 50,
-      imagePath: 'assets/images/3.jpg',
-      description:
-          'Community-led environmental effort to clear fallen branches, plastic waste, and flood debris from canal runoff gates to prevent urban flooding.',
-      requirements: [
-        'Heavy-duty rubber boots or covered work shoes',
-        'Work gloves (spare pairs will be provided)',
-        'Safety vest (provided on site)',
-      ],
-      coordinatorName: 'Nadeeka Wickramasinghe',
-      coordinatorPhone: '+94 76 554 1120',
-      assemblyPoint: 'Marine Drive Canal Gate bridge checkpoint',
-      announcements: [
-        'Municipal tractor arrived to collect full garbage bags.',
-        'Breakfast tea and buns will be served at 9:00 AM.',
-      ],
-      routeSteps: [
-        'Proceed along Marine Drive toward Wellawatte bridge (3.1 km)',
-        'Turn into Canal Side Walkway at the Municipal depot (150 m)',
-        'Sign in with Coordinator Nadeeka at the yellow gazebo tent.',
-      ],
-    ),
-    VolunteerOpportunity(
-      id: 'vol-4',
-      title: 'Relief Donation Sorting & QC',
-      category: 'Donation Sorting',
-      district: 'Gampaha',
-      status: 'Urgent Today',
-      statusBg: Color(0xFFFEE2E2),
-      statusColor: Color(0xFFDC2626),
-      location: 'Kelaniya Raja Maha Vihara Youth Center',
-      latitude: 6.9553,
-      longitude: 79.9197,
-      date: 'Today, 4:00 PM - 8:30 PM',
-      volunteersNeeded: '9/20 Volunteers',
-      currentJoined: 9,
-      totalNeeded: 20,
-      imagePath: 'assets/images/4.jpg',
-      description:
-          'Sort clothing donations by size, verify baby formula expiry dates, and box essential hygiene packages for Kelani Valley flood relief camps.',
-      requirements: [
-        'Attention to detail for quality checking dates',
-        'Friendly team player spirit',
-        'Ability to stand for 2-3 hours with breaks',
-      ],
-      coordinatorName: 'Asela Fernando',
-      coordinatorPhone: '+94 77 901 4455',
-      assemblyPoint: 'Youth Center Warehouse Main Door #3',
-      announcements: [
-        'New shipment of 200 baby care kits arriving at 5:00 PM.',
-      ],
-      routeSteps: [
-        'Follow Kandy Road toward Kelaniya bridge (5.8 km)',
-        'Turn into Temple Road and follow signs for Youth Center (700 m)',
-        'Check in at Warehouse Door #3 with Asela.',
-      ],
-    ),
-    VolunteerOpportunity(
-      id: 'vol-5',
-      title: 'Displaced Family Shelter Support',
-      category: 'Shelter Support',
-      district: 'Ratnapura',
-      status: 'High Priority',
-      statusBg: Color(0xFFFEF3C7),
-      statusColor: Color(0xFFD97706),
-      location: 'Ratnapura Town Hall Temporary Shelter',
-      latitude: 6.6828,
-      longitude: 80.4034,
-      date: 'Tomorrow, 9:00 AM - 5:00 PM',
-      volunteersNeeded: '15/30 Volunteers',
-      currentJoined: 15,
-      totalNeeded: 30,
-      imagePath: 'assets/images/1.jpg',
-      description:
-          'Provide care, distribute clean drinking water, manage meal service, and support children recreational activities at the flood shelter.',
-      requirements: [
-        'Empathetic and positive attitude',
-        'Child-friendly and supportive demeanor',
-        'Able to assist with meal distribution queues',
-      ],
-      coordinatorName: 'Chandana Perera',
-      coordinatorPhone: '+94 72 443 1290',
-      assemblyPoint: 'Town Hall Front Entrance Information Booth',
-      announcements: [
-        'Clean water bowser stationed at east entrance.',
-      ],
-      routeSteps: [
-        'Take High Level Road (A4) directly to Ratnapura town center',
-        'Turn left at Main Street Clock Tower to Town Hall',
-        'Report to Chandana Perera at Entrance Booth.',
-      ],
-    ),
-    VolunteerOpportunity(
-      id: 'vol-6',
-      title: 'Hill Country Landslide Relief Camp',
-      category: 'Food & Water',
-      district: 'Kandy',
-      status: 'Urgent Today',
-      statusBg: Color(0xFFFEE2E2),
-      statusColor: Color(0xFFDC2626),
-      location: 'Gatambe Community Ground, Peradeniya',
-      latitude: 7.2721,
-      longitude: 80.5980,
-      date: 'Today, 1:00 PM - 7:00 PM',
-      volunteersNeeded: '20/40 Volunteers',
-      currentJoined: 20,
-      totalNeeded: 40,
-      imagePath: 'assets/images/2.jpg',
-      description:
-          'Prepare hot meals and organize dry ration logistics for displaced tea plantation worker families affected by heavy hill country rains.',
-      requirements: [
-        'Kitchen prep or food packaging experience is a plus',
-        'Warm clothing recommended for evening shifts',
-      ],
-      coordinatorName: 'Ruwan Jayasuriya',
-      coordinatorPhone: '+94 77 112 3344',
-      assemblyPoint: 'Gatambe Ground Central Relief Pavillion',
-      announcements: [
-        'Fresh vegetables delivery arrived from Nuwara Eliya growers.',
-      ],
-      routeSteps: [
-        'Drive on Colombo-Kandy Road (A1) toward Peradeniya junction',
-        'Turn into Gatambe Ground entrance near Mahaweli river bank',
-        'Check in at Pavilion desk.',
-      ],
-    ),
-  ];
+  List<VolunteerOpportunity> _opportunities = [];
+  bool _isLoadingOpportunities = true;
+
+  Future<void> _fetchOpportunities() async {
+    setState(() => _isLoadingOpportunities = true);
+    try {
+      final res = await ApiClient.instance.get(ApiConfig.volunteerOpportunities);
+      if (res.success && res.data is Map && res.data['opportunities'] is List) {
+        final rawList = res.data['opportunities'] as List;
+        final loaded = rawList
+            .map((e) => VolunteerOpportunity.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList();
+        if (mounted && loaded.isNotEmpty) {
+          setState(() {
+            _opportunities = loaded;
+            _isLoadingOpportunities = false;
+          });
+          return;
+        }
+      }
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() => _isLoadingOpportunities = false);
+    }
+  }
 
   // Active Joined Opportunities for the current user
   final List<JoinedActivity> _myActivities = [];
@@ -398,16 +259,11 @@ class _CommunityVolunteerScreenState extends State<CommunityVolunteerScreen>
       initialIndex: widget.initialTabIndex.clamp(0, 1),
     );
 
-    // Initial joined activity for demonstration
-    _myActivities.add(
-      JoinedActivity(
-        opportunity: _opportunities[0],
-        joinedAt: 'Today, 10:15 AM',
-        volunteerRole: 'Ration Pack Assembler',
-        checkInStatus: 'On-Site Verified',
-        hoursLogged: 3,
-      ),
-    );
+    // Fetch live volunteer opportunities from Supabase PostgreSQL
+    _fetchOpportunities();
+
+    // Load real joined volunteer activities from local cache and backend
+    _loadVolunteerActivities();
 
     _fetchUserLocation();
   }
@@ -416,6 +272,85 @@ class _CommunityVolunteerScreenState extends State<CommunityVolunteerScreen>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+
+  Future<void> _loadVolunteerActivities() async {
+    // 1. Load from local cache
+    try {
+      final cached = await LocalCacheService.instance.getCachedJoinedActivities();
+      if (cached.isNotEmpty && mounted) {
+        setState(() {
+          _myActivities.clear();
+          for (final c in cached) {
+            final oppId = c['id']?.toString() ?? '';
+            VolunteerOpportunity opp = _opportunities.firstWhere(
+              (o) => o.id == oppId,
+              orElse: () => VolunteerOpportunity(
+                id: oppId,
+                title: c['title']?.toString() ?? 'Community Mission',
+                category: c['category']?.toString() ?? 'Relief Support',
+                district: c['district']?.toString() ?? 'Colombo',
+                status: c['status']?.toString() ?? 'Active',
+                statusBg: const Color(0xFFDCFCE7),
+                statusColor: const Color(0xFF16A34A),
+                location: c['location']?.toString() ?? 'Relief Center',
+                latitude: (c['latitude'] as num?)?.toDouble() ?? 6.9000,
+                longitude: (c['longitude'] as num?)?.toDouble() ?? 79.8600,
+                date: c['date']?.toString() ?? 'Today',
+                volunteersNeeded: c['volunteers_needed']?.toString() ?? '10/20',
+                imagePath: c['image_path']?.toString() ?? 'assets/images/1.jpg',
+                description: c['description']?.toString() ?? 'Community disaster relief support',
+                requirements: (c['requirements'] is List) ? List<String>.from(c['requirements']) : ['Age 18+'],
+                coordinatorName: c['coordinator_name']?.toString() ?? 'Relief Coordinator',
+                coordinatorPhone: c['coordinator_phone']?.toString() ?? '+94 77 000 0000',
+                assemblyPoint: c['assembly_point']?.toString() ?? 'Relief Center Desk',
+              ),
+            );
+            _myActivities.add(JoinedActivity(
+              opportunity: opp,
+              joinedAt: c['joined_at']?.toString() ?? 'Recent',
+              volunteerRole: c['role']?.toString() ?? 'Community Volunteer',
+              checkInStatus: 'Registered',
+              hoursLogged: 0,
+            ));
+          }
+        });
+      }
+    } catch (_) {}
+
+    // 2. Fetch from backend
+    try {
+      final user = AuthService.instance.currentUser;
+      if (user != null && user.id.isNotEmpty) {
+        final res = await ApiClient.instance.get(
+          ApiConfig.volunteerMyActivities,
+          queryParams: {'user_id': user.id},
+        );
+        if (res.success && res.data is Map && res.data['my_activities'] is List) {
+          final list = res.data['my_activities'] as List;
+          if (list.isNotEmpty && mounted) {
+            setState(() {
+              _myActivities.clear();
+              for (final a in list) {
+                final oppId = a['id']?.toString() ?? '';
+                final opp = _opportunities.firstWhere(
+                  (o) => o.id == oppId,
+                  orElse: () => _opportunities[0],
+                );
+                _myActivities.add(JoinedActivity(
+                  opportunity: opp,
+                  joinedAt: 'Active Mission',
+                  volunteerRole: 'Registered Volunteer',
+                  checkInStatus: 'Registered',
+                  hoursLogged: 0,
+                ));
+              }
+            });
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _fetchUserLocation() async {
@@ -841,19 +776,56 @@ class _CommunityVolunteerScreenState extends State<CommunityVolunteerScreen>
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton(
-                      onPressed: () {
+                      onPressed: () async {
                         Navigator.pop(ctx);
                         if (!alreadyJoined) {
+                          final newAct = JoinedActivity(
+                            opportunity: opp,
+                            joinedAt: 'Just Now',
+                            volunteerRole: 'Active Volunteer',
+                            checkInStatus: 'Registered',
+                          );
                           setState(() {
-                            _myActivities.add(
-                              JoinedActivity(
-                                opportunity: opp,
-                                joinedAt: 'Just Now',
-                                volunteerRole: 'Active Volunteer',
-                                checkInStatus: 'Not Checked In',
-                              ),
-                            );
+                            _myActivities.insert(0, newAct);
                           });
+
+                          // 1. Save to local storage cache immediately
+                          await LocalCacheService.instance.addJoinedActivity({
+                            'id': opp.id,
+                            'title': opp.title,
+                            'category': opp.category,
+                            'district': opp.district,
+                            'status': opp.status,
+                            'location': opp.location,
+                            'latitude': opp.latitude,
+                            'longitude': opp.longitude,
+                            'date': opp.date,
+                            'volunteers_needed': opp.volunteersNeeded,
+                            'image_path': opp.imagePath,
+                            'description': opp.description,
+                            'requirements': opp.requirements,
+                            'coordinator_name': opp.coordinatorName,
+                            'coordinator_phone': opp.coordinatorPhone,
+                            'assembly_point': opp.assemblyPoint,
+                            'joined_at': 'Just Now',
+                            'role': 'Community Volunteer',
+                          });
+
+                          // 2. Sync to Supabase Backend
+                          final user = AuthService.instance.currentUser;
+                          if (user != null && user.id.isNotEmpty) {
+                            ApiClient.instance.post(
+                              ApiConfig.volunteerJoin,
+                              body: {
+                                'user_id': user.id,
+                                'opportunity_id': opp.id,
+                                'title': opp.title,
+                                'district': opp.district,
+                                'date': opp.date,
+                              },
+                            );
+                          }
+
                           _showJoinSuccessDialog(opp);
                         } else {
                           // Switch to My Activities tab
@@ -1215,17 +1187,11 @@ class _CommunityVolunteerScreenState extends State<CommunityVolunteerScreen>
                 child: ElevatedButton.icon(
                   onPressed: () {
                     Navigator.pop(ctx);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Opening live map route to ${opp.location}...'),
-                        backgroundColor: const Color(0xFF0284C7),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
+                    context.push('/map', extra: LatLng(opp.latitude, opp.longitude));
                   },
                   icon: const Icon(Icons.map_rounded, color: Colors.white, size: 18),
                   label: Text(
-                    'Open in Google Maps / GPS App',
+                    'Open Live Disaster Navigation Map',
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
@@ -1355,34 +1321,53 @@ class _CommunityVolunteerScreenState extends State<CommunityVolunteerScreen>
     );
   }
 
-  void _checkInVolunteer(int index) {
+  void _checkInVolunteer(int index) async {
     final activity = _myActivities[index];
     final isAlreadyCheckedIn = activity.checkInStatus == 'On-Site Verified';
+    final newStatus = isAlreadyCheckedIn ? 'Completed' : 'On-Site Verified';
+    final newHours = isAlreadyCheckedIn ? activity.hoursLogged + 2 : 1;
 
     setState(() {
       _myActivities[index] = activity.copyWith(
-        checkInStatus: isAlreadyCheckedIn ? 'Completed' : 'On-Site Verified',
-        hoursLogged: isAlreadyCheckedIn ? activity.hoursLogged + 2 : 1,
+        checkInStatus: newStatus,
+        hoursLogged: newHours,
       );
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.verified_rounded, color: Colors.white, size: 20),
-            const SizedBox(width: 8),
-            Text(
-              isAlreadyCheckedIn
-                  ? 'Volunteer mission marked Completed (+2 hrs logged)!'
-                  : 'On-site Check-in Verified at ${activity.opportunity.location}!',
-            ),
-          ],
+    // Persist verification to local storage cache
+    try {
+      final cached = await LocalCacheService.instance.getCachedJoinedActivities();
+      for (int i = 0; i < cached.length; i++) {
+        if (cached[i]['id'] == activity.opportunity.id) {
+          cached[i]['check_in_status'] = newStatus;
+          cached[i]['hours_logged'] = newHours;
+          break;
+        }
+      }
+      await LocalCacheService.instance.saveJoinedActivities(cached);
+    } catch (_) {}
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.verified_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isAlreadyCheckedIn
+                      ? 'Volunteer mission marked Completed (+2 hrs logged)!'
+                      : 'On-site Check-in Verified at ${activity.opportunity.location}!',
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF16A34A),
+          behavior: SnackBarBehavior.floating,
         ),
-        backgroundColor: const Color(0xFF16A34A),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+      );
+    }
   }
 
   // Reusable Smart Dropdown Card Builder
@@ -1562,10 +1547,17 @@ class _CommunityVolunteerScreenState extends State<CommunityVolunteerScreen>
     final filteredList = _getFilteredOpportunities();
 
     return RefreshIndicator(
-      onRefresh: _fetchUserLocation,
+      onRefresh: () async {
+        await Future.wait([_fetchOpportunities(), _fetchUserLocation()]);
+      },
       child: ListView(
         padding: const EdgeInsets.only(bottom: 24),
         children: [
+          if (_isLoadingOpportunities && _opportunities.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 40),
+              child: Center(child: CircularProgressIndicator(color: AppColors.primaryNavy)),
+            ),
           // GPS Location Status Banner
           Container(
             margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),

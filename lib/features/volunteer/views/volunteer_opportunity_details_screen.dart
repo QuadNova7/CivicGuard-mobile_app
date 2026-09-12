@@ -1,3 +1,7 @@
+import '../../../core/network/api_client.dart';
+import '../../../core/network/api_config.dart';
+import '../../../core/services/local_cache_service.dart';
+import '../../auth/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -308,11 +312,54 @@ class VolunteerOpportunityDetailsScreen extends StatelessWidget {
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: () {
-                    context.push(
-                      '/volunteer-joined',
-                      extra: opportunity,
-                    );
+                  onPressed: () async {
+                    // Direct guest & volunteer joining permitted without login barrier
+
+                    final user = AuthService.instance.currentUser;
+                    try {
+                      await ApiClient.instance.post(
+                        ApiConfig.volunteerJoin,
+                        body: {
+                          'opportunity_id': opportunity.id,
+                          'user_id': user?.id ?? 'guest-volunteer-',
+                          'user_name': user?.name ?? 'Community Volunteer',
+                          'phone': user?.phone ?? '+94 77 000 0000',
+                        },
+                      );
+                    } catch (_) {}
+
+                    // PERSIST IN LOCAL CACHE
+                    await LocalCacheService.instance.addJoinedActivity({
+                      'id': opportunity.id,
+                      'title': opportunity.title,
+                      'category': opportunity.category,
+                      'district': opportunity.district,
+                      'status': opportunity.status,
+                      'location': opportunity.location,
+                      'latitude': opportunity.latitude,
+                      'longitude': opportunity.longitude,
+                      'date': opportunity.date,
+                      'volunteers_needed': opportunity.volunteersNeeded,
+                      'current_joined': opportunity.currentJoined + 1,
+                      'total_needed': opportunity.totalNeeded,
+                      'image_path': opportunity.imagePath,
+                      'description': opportunity.description,
+                      'requirements': opportunity.requirements,
+                      'coordinator_name': opportunity.coordinatorName,
+                      'coordinator_phone': opportunity.coordinatorPhone,
+                      'assembly_point': opportunity.assemblyPoint,
+                      'announcements': opportunity.announcements,
+                      'route_steps': opportunity.routeSteps,
+                      'joined_at': 'Just Now',
+                      'role': 'Community Volunteer',
+                    });
+
+                    if (context.mounted) {
+                      context.push(
+                        '/volunteer-joined',
+                        extra: opportunity,
+                      );
+                    }
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryNavy,
