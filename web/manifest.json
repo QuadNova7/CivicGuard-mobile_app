@@ -1,6 +1,6 @@
 {
-    "name": "civicguard_mobileapp",
-    "short_name": "civicguard_mobileapp",
+    "name": "CivicGuard",
+    "short_name": "CivicGuard",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
