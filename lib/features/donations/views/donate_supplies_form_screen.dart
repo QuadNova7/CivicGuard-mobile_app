@@ -5,6 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/location_helper.dart';
+import '../../auth/services/auth_service.dart';
+import '../../auth/views/dialogs/auth_role_dialog.dart';
 
 class DonateSuppliesFormScreen extends StatefulWidget {
   final String category;
@@ -187,13 +189,6 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
               'Live GPS: ${result.latitude.toStringAsFixed(4)}, ${result.longitude.toStringAsFixed(4)} (Accuracy: \u00b1${result.accuracy.toStringAsFixed(1)}m)';
           _isLocating = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('\uD83D\uDCCD Live GPS Location updated: ${result.formattedAddress}'),
-            backgroundColor: const Color(0xFF16A34A),
-            duration: const Duration(seconds: 3),
-          ),
-        );
       }
     } catch (e) {
       if (mounted) {
@@ -201,12 +196,6 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
           _locationStatus = 'Tap GPS icon to retry ($e)';
           _isLocating = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('GPS Auto-detect: $e'),
-            backgroundColor: Colors.orange.shade800,
-          ),
-        );
       }
     }
   }
@@ -231,6 +220,33 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
           backgroundColor: Colors.redAccent,
         ),
       );
+      return;
+    }
+
+    // AUTH GUARD: Require login before submitting donation
+    if (!AuthService.instance.isLoggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.lock_outline_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Please sign in or register to submit your donation.',
+                  style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600, fontSize: 12.5),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.primaryNavy,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.all(16),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      AuthRoleSelectionDialog.show(context, redirectPath: '/donate-categories');
       return;
     }
 
@@ -260,10 +276,11 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
         return Icons.checkroom_rounded;
       case 'Medical Supplies':
         return Icons.medical_services_rounded;
+      case 'Shelter Materials':
       case 'Shelter & Tools':
-        return Icons.home_repair_service_rounded;
-      case 'Baby Care & Diapers':
-        return Icons.child_friendly_rounded;
+        return Icons.roofing_rounded;
+      case 'Hygiene & Sanitation':
+        return Icons.sanitizer_rounded;
       default:
         return Icons.volunteer_activism_rounded;
     }
@@ -291,11 +308,16 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
         centerTitle: true,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. Category Header Card with "Change" button
+            // 1. Auth Status Header Card (Before Submit)
+            _buildAuthBanner(context),
+
+            const SizedBox(height: 12),
+
+            // 2. Category Header Card with "Change" button
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
@@ -306,37 +328,54 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
               child: Row(
                 children: [
                   Container(
-                    width: 40,
-                    height: 40,
+                    width: 44,
+                    height: 44,
                     decoration: BoxDecoration(
                       color: const Color(0xFFE0F2FE),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
                       _getCategoryIcon(_currentCategory),
                       color: const Color(0xFF0284C7),
-                      size: 20,
+                      size: 22,
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Text(
-                      _currentCategory,
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textDark,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Category',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        Text(
+                          _currentCategory,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  GestureDetector(
-                    onTap: () => context.pop(),
+                  TextButton(
+                    onPressed: () => context.pop(),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      minimumSize: Size.zero,
+                    ),
                     child: Text(
                       'Change',
                       style: GoogleFonts.plusJakartaSans(
-                        fontSize: 13.5,
+                        color: const Color(0xFF0284C7),
                         fontWeight: FontWeight.w700,
-                        color: const Color(0xFF2563EB),
+                        fontSize: 13,
                       ),
                     ),
                   ),
@@ -344,11 +383,11 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
               ),
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
 
-            // 2. Item Name Input
+            // 3. Item Name Field
             Text(
-              'Item name *',
+              'Item Name *',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 13.5,
                 fontWeight: FontWeight.w700,
@@ -359,7 +398,7 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
             TextFormField(
               controller: _itemNameController,
               decoration: InputDecoration(
-                hintText: 'e.g. Bottled Water',
+                hintText: 'e.g. Bottled Water (500ml)',
                 hintStyle: GoogleFonts.plusJakartaSans(color: AppColors.textMuted, fontSize: 14),
                 filled: true,
                 fillColor: Colors.white,
@@ -379,11 +418,11 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
               ),
             ),
 
-            const SizedBox(height: 18),
+            const SizedBox(height: 16),
 
-            // 3. Quantity Stepper + Unit Selector
+            // 4. Quantity Stepper + Unit Selector
             Text(
-              'Quantity *',
+              'Quantity & Unit *',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 13.5,
                 fontWeight: FontWeight.w700,
@@ -393,9 +432,9 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
             const SizedBox(height: 8),
             Row(
               children: [
-                // Stepper Counter
+                // Quantity Counter
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  height: 50,
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(14),
@@ -404,19 +443,24 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
                   child: Row(
                     children: [
                       IconButton(
+                        icon: const Icon(Icons.remove_rounded, size: 20, color: Color(0xFF64748B)),
                         onPressed: () {
                           if (_quantity > 1) {
-                            setState(() => _quantity--);
+                            setState(() {
+                              _quantity = _quantity <= 10
+                                  ? _quantity - 1
+                                  : _quantity <= 50
+                                      ? _quantity - 5
+                                      : _quantity - 10;
+                            });
                           }
                         },
-                        icon: const Icon(Icons.remove_rounded, color: AppColors.textDark, size: 20),
-                        splashRadius: 20,
-                        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      SizedBox(
+                        width: 44,
                         child: Text(
                           '$_quantity',
+                          textAlign: TextAlign.center,
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
@@ -425,12 +469,16 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
                         ),
                       ),
                       IconButton(
+                        icon: const Icon(Icons.add_rounded, size: 20, color: Color(0xFF64748B)),
                         onPressed: () {
-                          setState(() => _quantity++);
+                          setState(() {
+                            _quantity = _quantity < 10
+                                ? _quantity + 1
+                                : _quantity < 50
+                                    ? _quantity + 5
+                                    : _quantity + 10;
+                          });
                         },
-                        icon: const Icon(Icons.add_rounded, color: AppColors.textDark, size: 20),
-                        splashRadius: 20,
-                        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                       ),
                     ],
                   ),
@@ -441,6 +489,7 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
                 // Unit Selector Dropdown
                 Expanded(
                   child: Container(
+                    height: 50,
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                     decoration: BoxDecoration(
                       color: Colors.white,
@@ -451,7 +500,7 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
                       child: DropdownButton<String>(
                         value: _selectedUnit,
                         isExpanded: true,
-                        icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.textSecondary),
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B)),
                         items: _units.map((unit) {
                           return DropdownMenuItem(
                             value: unit,
@@ -466,9 +515,7 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
                           );
                         }).toList(),
                         onChanged: (val) {
-                          if (val != null) {
-                            setState(() => _selectedUnit = val);
-                          }
+                          if (val != null) setState(() => _selectedUnit = val);
                         },
                       ),
                     ),
@@ -477,11 +524,11 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
               ],
             ),
 
-            const SizedBox(height: 18),
+            const SizedBox(height: 16),
 
-            // 4. Description (optional)
+            // 5. Description / Notes
             Text(
-              'Description (optional)',
+              'Description & Expiry Notes',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 13.5,
                 fontWeight: FontWeight.w700,
@@ -491,10 +538,10 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
             const SizedBox(height: 8),
             TextFormField(
               controller: _descriptionController,
-              maxLines: 2,
+              maxLines: 3,
               decoration: InputDecoration(
-                hintText: 'e.g. Sealed bottled water (500ml)',
-                hintStyle: GoogleFonts.plusJakartaSans(color: AppColors.textMuted, fontSize: 14),
+                hintText: 'e.g. Unopened cartons, expiry in 6 months, clean packaging',
+                hintStyle: GoogleFonts.plusJakartaSans(color: AppColors.textMuted, fontSize: 13.5),
                 filled: true,
                 fillColor: Colors.white,
                 contentPadding: const EdgeInsets.all(14),
@@ -513,11 +560,11 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
               ),
             ),
 
-            const SizedBox(height: 18),
+            const SizedBox(height: 16),
 
-            // 5. Add Photos
+            // 6. Photo Attachments
             Text(
-              'Add photos (optional)',
+              'Add Item Photos',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 13.5,
                 fontWeight: FontWeight.w700,
@@ -529,17 +576,15 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  ..._selectedPhotos.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final file = entry.value;
+                  ...List.generate(_selectedPhotos.length, (idx) {
                     return Container(
-                      margin: const EdgeInsets.only(right: 10),
                       width: 76,
                       height: 76,
+                      margin: const EdgeInsets.only(right: 10),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
                         image: DecorationImage(
-                          image: FileImage(file),
+                          image: FileImage(_selectedPhotos[idx]),
                           fit: BoxFit.cover,
                         ),
                       ),
@@ -548,7 +593,7 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
                         child: GestureDetector(
                           onTap: () {
                             setState(() {
-                              _selectedPhotos.removeAt(index);
+                              _selectedPhotos.removeAt(idx);
                             });
                           },
                           child: Container(
@@ -598,9 +643,9 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
               ),
             ),
 
-            const SizedBox(height: 18),
+            const SizedBox(height: 16),
 
-            // 6. Pickup / Drop-off Location with Live GPS Auto-Detect Button
+            // 7. Pickup / Drop-off Location
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -704,12 +749,12 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
               ),
             ],
 
-            const SizedBox(height: 28),
+            const SizedBox(height: 24),
 
-            // 7. Submit Button
+            // 8. Submit Button
             SizedBox(
               width: double.infinity,
-              height: 52,
+              height: 50,
               child: ElevatedButton(
                 onPressed: _isSubmitting ? null : _submitDonation,
                 style: ElevatedButton.styleFrom(
@@ -717,7 +762,7 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
                   foregroundColor: Colors.white,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                 ),
                 child: _isSubmitting
@@ -729,7 +774,7 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
                     : Text(
                         'Submit Donation',
                         style: GoogleFonts.plusJakartaSans(
-                          fontSize: 16,
+                          fontSize: 15,
                           fontWeight: FontWeight.w700,
                           letterSpacing: -0.2,
                         ),
@@ -737,10 +782,113 @@ class _DonateSuppliesFormScreenState extends State<DonateSuppliesFormScreen> {
               ),
             ),
 
-            const SizedBox(height: 30),
+            const SizedBox(height: 24),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildAuthBanner(BuildContext context) {
+    return AnimatedBuilder(
+      animation: AuthService.instance,
+      builder: (context, _) {
+        final user = AuthService.instance.currentUser;
+        final isLoggedIn = AuthService.instance.isLoggedIn;
+
+        if (!isLoggedIn || user == null) {
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFFBEB),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFFDE68A)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.account_circle_outlined, color: Color(0xFFD97706), size: 22),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Guest Mode',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF92400E),
+                        ),
+                      ),
+                      Text(
+                        'Sign in or register before submitting to link donation to your profile.',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 10.5,
+                          color: const Color(0xFFB45309),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () => AuthRoleSelectionDialog.show(context, redirectPath: '/donate-categories'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryNavy,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    'Sign In',
+                    style: GoogleFonts.plusJakartaSans(fontSize: 11, fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0FDF4),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFBBF7D0)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.verified_user_rounded, color: Color(0xFF16A34A), size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Donor: ${user.name} (${user.district})',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF166534),
+                      ),
+                    ),
+                    Text(
+                      'Contribution will be logged under your verified relief account.',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 10.5,
+                        color: const Color(0xFF15803D),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
