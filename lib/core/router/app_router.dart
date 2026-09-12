@@ -39,19 +39,26 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/login',
       builder: (context, state) {
-        String? redirect;
-        int tabIndex = 0;
-        if (state.extra is Map<String, dynamic>) {
-          final map = state.extra as Map<String, dynamic>;
-          redirect = map['redirect'] as String?;
-          tabIndex = (map['tab'] as int?) ?? 0;
-        } else if (state.extra is String) {
-          redirect = state.extra as String;
-        } else if (state.uri.queryParameters.containsKey('tab')) {
-          tabIndex = int.tryParse(state.uri.queryParameters['tab'] ?? '0') ?? 0;
-          redirect = state.uri.queryParameters['redirect'];
+        String? redirect = state.uri.queryParameters['redirect'];
+        String? role = state.uri.queryParameters['role'];
+        int tabIndex = int.tryParse(state.uri.queryParameters['tab'] ?? '0') ?? 0;
+
+        final extra = state.extra;
+        if (extra is Map) {
+          if (extra['redirect'] != null) redirect = extra['redirect'].toString();
+          if (extra['role'] != null) role = extra['role'].toString();
+          if (extra['tab'] != null && extra['tab'] is num) {
+            tabIndex = (extra['tab'] as num).toInt();
+          }
+        } else if (extra is String && extra.isNotEmpty) {
+          redirect = extra;
         }
-        return LoginScreen(redirectPath: redirect, initialTabIndex: tabIndex);
+
+        return LoginScreen(
+          redirectPath: redirect,
+          initialTabIndex: tabIndex,
+          initialRole: role,
+        );
       },
     ),
     GoRoute(
@@ -61,7 +68,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/issue-details',
       builder: (context, state) {
-        final category = state.extra as String? ?? 'Road Hazard';
+        final category = state.extra is String ? state.extra as String : 'Road Hazard';
         return IssueDetailsScreen(category: category);
       },
     ),
@@ -91,11 +98,11 @@ final GoRouter appRouter = GoRouter(
         String category = 'Food & Water';
         int? iconCode;
         int? iconColorValue;
-        if (state.extra is Map<String, dynamic>) {
-          final map = state.extra as Map<String, dynamic>;
-          category = map['category'] as String? ?? 'Food & Water';
-          iconCode = map['iconCode'] as int?;
-          iconColorValue = map['iconColor'] as int?;
+        if (state.extra is Map) {
+          final map = state.extra as Map;
+          category = map['category']?.toString() ?? 'Food & Water';
+          if (map['iconCode'] is int) iconCode = map['iconCode'] as int;
+          if (map['iconColor'] is int) iconColorValue = map['iconColor'] as int;
         } else if (state.extra is String) {
           category = state.extra as String;
         }
@@ -109,13 +116,13 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/donation-success',
       builder: (context, state) {
-        final map = (state.extra as Map<String, dynamic>?) ?? {};
+        final map = state.extra is Map ? state.extra as Map : {};
         return DonationSuccessScreen(
-          category: map['category'] as String? ?? 'Food & Water',
-          itemName: map['itemName'] as String? ?? 'Bottled Water',
-          quantity: map['quantity'] as String? ?? '50 Bottles',
-          location: map['location'] as String? ?? 'Kandy, Sri Lanka',
-          description: map['description'] as String? ?? '',
+          category: map['category']?.toString() ?? 'Food & Water',
+          itemName: map['itemName']?.toString() ?? 'Bottled Water',
+          quantity: map['quantity']?.toString() ?? '50 Bottles',
+          location: map['location']?.toString() ?? 'Kandy, Sri Lanka',
+          description: map['description']?.toString() ?? '',
         );
       },
     ),
@@ -136,55 +143,57 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/community-volunteer',
       builder: (context, state) {
-        final initialTab = (state.extra as int?) ?? 0;
+        final initialTab = (state.extra is num) ? (state.extra as num).toInt() : 0;
         return CommunityVolunteerScreen(initialTabIndex: initialTab);
       },
     ),
     GoRoute(
       path: '/volunteer-opportunity-details',
       builder: (context, state) {
-        final opp = state.extra as VolunteerOpportunity? ??
-            const VolunteerOpportunity(
-              id: 'vol-1',
-              title: 'Flood Relief Support',
-              status: 'Ongoing',
-              statusBg: Color(0xFFDCFCE7),
-              statusColor: Color(0xFF16A34A),
-              location: 'Kandy',
-              date: 'Sat, 20 Aug 2026',
-              volunteersNeeded: '12 volunteers needed',
-              imagePath: 'assets/images/2.jpg',
-              description: 'Help distribute relief items and support affected families in flood-hit areas.',
-              requirements: [
-                'Age 18+',
-                'Physically fit',
-                'Bring water and basic gear',
-              ],
-            );
+        final opp = (state.extra is VolunteerOpportunity)
+            ? state.extra as VolunteerOpportunity
+            : const VolunteerOpportunity(
+                id: 'vol-1',
+                title: 'Flood Relief Support',
+                status: 'Ongoing',
+                statusBg: Color(0xFFDCFCE7),
+                statusColor: Color(0xFF16A34A),
+                location: 'Kandy',
+                date: 'Sat, 20 Aug 2026',
+                volunteersNeeded: '12 volunteers needed',
+                imagePath: 'assets/images/2.jpg',
+                description: 'Help distribute relief items and support affected families in flood-hit areas.',
+                requirements: [
+                  'Age 18+',
+                  'Physically fit',
+                  'Bring water and basic gear',
+                ],
+              );
         return VolunteerOpportunityDetailsScreen(opportunity: opp);
       },
     ),
     GoRoute(
       path: '/volunteer-joined',
       builder: (context, state) {
-        final opp = state.extra as VolunteerOpportunity? ??
-            const VolunteerOpportunity(
-              id: 'vol-1',
-              title: 'Flood Relief Support',
-              status: 'Ongoing',
-              statusBg: Color(0xFFDCFCE7),
-              statusColor: Color(0xFF16A34A),
-              location: 'Kandy',
-              date: 'Sat, 20 Aug 2026',
-              volunteersNeeded: '12 volunteers needed',
-              imagePath: 'assets/images/2.jpg',
-              description: 'Help distribute relief items and support affected families in flood-hit areas.',
-              requirements: [
-                'Age 18+',
-                'Physically fit',
-                'Bring water and basic gear',
-              ],
-            );
+        final opp = (state.extra is VolunteerOpportunity)
+            ? state.extra as VolunteerOpportunity
+            : const VolunteerOpportunity(
+                id: 'vol-1',
+                title: 'Flood Relief Support',
+                status: 'Ongoing',
+                statusBg: Color(0xFFDCFCE7),
+                statusColor: Color(0xFF16A34A),
+                location: 'Kandy',
+                date: 'Sat, 20 Aug 2026',
+                volunteersNeeded: '12 volunteers needed',
+                imagePath: 'assets/images/2.jpg',
+                description: 'Help distribute relief items and support affected families in flood-hit areas.',
+                requirements: [
+                  'Age 18+',
+                  'Physically fit',
+                  'Bring water and basic gear',
+                ],
+              );
         return VolunteerJoinedScreen(opportunity: opp);
       },
     ),
@@ -197,23 +206,24 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/crew-assignment-details',
       builder: (context, state) {
-        final assignment = state.extra as CrewAssignment? ??
-            const CrewAssignment(
-              id: 'crew-001',
-              title: 'Flood Response',
-              priority: 'High Priority',
-              priorityColor: Color(0xFFEF4444),
-              priorityBg: Color(0xFFFEE2E2),
-              location: 'Peradeniya',
-              assignedBy: 'Assigned by Kandy Ops Center',
-              status: 'Assigned',
-              statusBg: Color(0xFFDBEAFE),
-              statusColor: Color(0xFF1E40AF),
-              imagePath: 'assets/images/1.jpg',
-              description: 'Assess flooded area, assist in evacuations, and report situation with photos.',
-              latitude: 7.2600,
-              longitude: 80.5975,
-            );
+        final assignment = (state.extra is CrewAssignment)
+            ? state.extra as CrewAssignment
+            : const CrewAssignment(
+                id: 'crew-001',
+                title: 'Flood Response',
+                priority: 'High Priority',
+                priorityColor: Color(0xFFEF4444),
+                priorityBg: Color(0xFFFEE2E2),
+                location: 'Peradeniya',
+                assignedBy: 'Assigned by Kandy Ops Center',
+                status: 'Assigned',
+                statusBg: Color(0xFFDBEAFE),
+                statusColor: Color(0xFF1E40AF),
+                imagePath: 'assets/images/1.jpg',
+                description: 'Assess flooded area, assist in evacuations, and report situation with photos.',
+                latitude: 7.2600,
+                longitude: 80.5975,
+              );
         return CrewAssignmentDetailsScreen(assignment: assignment);
       },
     ),
