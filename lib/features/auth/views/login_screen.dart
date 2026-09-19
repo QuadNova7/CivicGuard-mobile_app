@@ -39,6 +39,7 @@ class _LoginScreenState extends State<LoginScreen> {
   String _regDistrict = 'Colombo';
 
   bool _isLoading = false;
+  String _quickFillCategory = 'ALL';
 
   final List<String> _districts = const [
     'Colombo', 'Gampaha', 'Kalutara', 'Kandy', 'Matale', 'Nuwara Eliya',
@@ -168,6 +169,150 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     }
+  }
+
+  
+  Widget _buildCategoryFilterChip(String categoryKey, String label) {
+    final bool isSelected = _quickFillCategory == categoryKey;
+    return InkWell(
+      onTap: () => setState(() => _quickFillCategory = categoryKey),
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primaryNavy : Colors.white,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: isSelected ? AppColors.primaryNavy : const Color(0xFFCBD5E1)),
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 10,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+            color: isSelected ? Colors.white : const Color(0xFF475569),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Map<String, dynamic>> _getFilteredQuickFillPersonas() {
+    final List<Map<String, dynamic>> all = [
+      // 1. Water Rescue
+      {
+        'category': 'WATER',
+        'label': '🌊 Sunil Shantha (Water #01 Lead)',
+        'email': 'sunil.water@cmc.gov.lk',
+        'bg': const Color(0xFFE0F2FE),
+        'border': const Color(0xFFBAE6FD),
+        'textColor': const Color(0xFF0369A1),
+      },
+      {
+        'category': 'WATER',
+        'label': '🤿 Roshan Silva (Water #02 Lead)',
+        'email': 'crew.colombo.02@civicguard.lk',
+        'bg': const Color(0xFFE0F2FE),
+        'border': const Color(0xFFBAE6FD),
+        'textColor': const Color(0xFF0369A1),
+      },
+      {
+        'category': 'WATER',
+        'label': '🤿 Kasun Bandara (Rescue Diver)',
+        'email': 'kasun.diver@cmc.gov.lk',
+        'bg': const Color(0xFFE0F2FE),
+        'border': const Color(0xFFBAE6FD),
+        'textColor': const Color(0xFF0284C7),
+      },
+      {
+        'category': 'WATER',
+        'label': '⛵ Nuwan Pradeep (Boat Pilot)',
+        'email': 'nuwan.boat@cmc.gov.lk',
+        'bg': const Color(0xFFE0F2FE),
+        'border': const Color(0xFFBAE6FD),
+        'textColor': const Color(0xFF0284C7),
+      },
+
+      // 2. 4x4 Debris Clearance
+      {
+        'category': '4X4',
+        'label': '🚜 Sanjeewa (4x4 #01 Lead)',
+        'email': 'crew.colombo.03@civicguard.lk',
+        'bg': const Color(0xFFFEF3C7),
+        'border': const Color(0xFFFDE68A),
+        'textColor': const Color(0xFFB45309),
+      },
+      {
+        'category': '4X4',
+        'label': '🚛 Bandara (4x4 #02 Lead)',
+        'email': 'crew.colombo.04@civicguard.lk',
+        'bg': const Color(0xFFFEF3C7),
+        'border': const Color(0xFFFDE68A),
+        'textColor': const Color(0xFFB45309),
+      },
+      {
+        'category': '4X4',
+        'label': '🔧 Amila Perera (Winch Crew)',
+        'email': 'amila.4x4@cmc.gov.lk',
+        'bg': const Color(0xFFFEF3C7),
+        'border': const Color(0xFFFDE68A),
+        'textColor': const Color(0xFFD97706),
+      },
+
+      // 3. Medical Triage
+      {
+        'category': 'MEDICAL',
+        'label': '🩺 Dr. Priyantha (Medical #01 Lead)',
+        'email': 'crew.colombo.05@civicguard.lk',
+        'bg': const Color(0xFFFEE2E2),
+        'border': const Color(0xFFFECACA),
+        'textColor': const Color(0xFFB91C1C),
+      },
+      {
+        'category': 'MEDICAL',
+        'label': '🏥 Dr. Nimal (Medical #02 Lead)',
+        'email': 'crew.colombo.06@civicguard.lk',
+        'bg': const Color(0xFFFEE2E2),
+        'border': const Color(0xFFFECACA),
+        'textColor': const Color(0xFFB91C1C),
+      },
+
+      // 4. Drone, Hazmat & Comms
+      {
+        'category': 'TECH',
+        'label': '🚁 Tharindu (Drone UAV #01 Lead)',
+        'email': 'crew.colombo.07@civicguard.lk',
+        'bg': const Color(0xFFEDE9FE),
+        'border': const Color(0xFFDDD6FE),
+        'textColor': const Color(0xFF6D28D9),
+      },
+      {
+        'category': 'TECH',
+        'label': '🛰️ Kamal Perera (Mapping #02 Lead)',
+        'email': 'crew.colombo.08@civicguard.lk',
+        'bg': const Color(0xFFEDE9FE),
+        'border': const Color(0xFFDDD6FE),
+        'textColor': const Color(0xFF6D28D9),
+      },
+      {
+        'category': 'TECH',
+        'label': '☣️ Dinesh Kumara (Hazmat #01 Lead)',
+        'email': 'crew.colombo.09@civicguard.lk',
+        'bg': const Color(0xFFFFEDD5),
+        'border': const Color(0xFFFED7AA),
+        'textColor': const Color(0xFFC2410C),
+      },
+      {
+        'category': 'TECH',
+        'label': '📻 Ruwan Fernando (HAM Comms #01 Lead)',
+        'email': 'crew.colombo.10@civicguard.lk',
+        'bg': const Color(0xFFD1FAE5),
+        'border': const Color(0xFFA7F3D0),
+        'textColor': const Color(0xFF047857),
+      },
+    ];
+
+    if (_quickFillCategory == 'ALL') return all;
+    return all.where((p) => p['category'] == _quickFillCategory).toList();
   }
 
   @override
@@ -388,8 +533,8 @@ class _LoginScreenState extends State<LoginScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(12),
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(14),
               border: Border.all(color: const Color(0xFFCBD5E1)),
             ),
             child: Column(
@@ -397,11 +542,11 @@ class _LoginScreenState extends State<LoginScreen> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.shield_outlined, color: AppColors.primaryNavy, size: 16),
+                    const Icon(Icons.shield_rounded, color: AppColors.primaryNavy, size: 15),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        'Officer Pre-Assigned Crews (Tap to Quick-Fill):',
+                        'Pre-Assigned Crews (Quick-Fill):',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w800,
@@ -409,56 +554,73 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE2E8F0),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '13 Accounts',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF475569),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
+
+                // Category Filter Pills
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildCategoryFilterChip('ALL', 'All (13)'),
+                      const SizedBox(width: 4),
+                      _buildCategoryFilterChip('WATER', '💧 Water Rescue (4)'),
+                      const SizedBox(width: 4),
+                      _buildCategoryFilterChip('4X4', '🚜 4x4 Debris (3)'),
+                      const SizedBox(width: 4),
+                      _buildCategoryFilterChip('MEDICAL', '🩺 Medical (2)'),
+                      const SizedBox(width: 4),
+                      _buildCategoryFilterChip('TECH', '🚁 Tech/Hazmat/Radio (4)'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Pre-Assigned Personas Wrap
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
-                  children: [
-                    ActionChip(
-                      backgroundColor: const Color(0xFFE0F2FE),
-                      side: const BorderSide(color: Color(0xFFBAE6FD)),
+                  children: _getFilteredQuickFillPersonas().map((p) {
+                    final bool isSelected = _loginEmailController.text == p['email'];
+                    return ActionChip(
+                      backgroundColor: isSelected ? (p['bg'] as Color).withValues(alpha: 0.9) : (p['bg'] as Color),
+                      side: BorderSide(
+                        color: isSelected ? (p['textColor'] as Color) : (p['border'] as Color),
+                        width: isSelected ? 1.6 : 1.0,
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                       label: Text(
-                        '🌊 Sunil (Water Rescue)',
-                        style: GoogleFonts.plusJakartaSans(fontSize: 10.5, fontWeight: FontWeight.w700, color: const Color(0xFF0369A1)),
+                        p['label'] as String,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 10.5,
+                          fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
+                          color: p['textColor'] as Color,
+                        ),
                       ),
                       onPressed: () {
                         setState(() {
-                          _loginEmailController.text = 'sunil.water@cmc.gov.lk';
+                          _loginEmailController.text = p['email'] as String;
                           _loginPasswordController.text = 'Crew@123';
                         });
                       },
-                    ),
-                    ActionChip(
-                      backgroundColor: const Color(0xFFFEF3C7),
-                      side: const BorderSide(color: Color(0xFFFDE68A)),
-                      label: Text(
-                        '🚜 Bandara (4x4 Debris)',
-                        style: GoogleFonts.plusJakartaSans(fontSize: 10.5, fontWeight: FontWeight.w700, color: const Color(0xFFB45309)),
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _loginEmailController.text = 'bandara.4x4@civicguard.lk';
-                          _loginPasswordController.text = 'Crew@123';
-                        });
-                      },
-                    ),
-                    ActionChip(
-                      backgroundColor: const Color(0xFFFEE2E2),
-                      side: const BorderSide(color: Color(0xFFFECACA)),
-                      label: Text(
-                        '🩺 Dr. Nimal (Medical)',
-                        style: GoogleFonts.plusJakartaSans(fontSize: 10.5, fontWeight: FontWeight.w700, color: const Color(0xFFB91C1C)),
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _loginEmailController.text = 'nimal.medical@civicguard.lk';
-                          _loginPasswordController.text = 'Crew@123';
-                        });
-                      },
-                    ),
-                  ],
+                    );
+                  }).toList(),
                 ),
                 const SizedBox(height: 8),
                 Text(

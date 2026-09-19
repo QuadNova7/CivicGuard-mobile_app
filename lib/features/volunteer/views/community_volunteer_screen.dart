@@ -1452,7 +1452,13 @@ class _CommunityVolunteerScreenState extends State<CommunityVolunteerScreen>
             color: AppColors.primaryNavy,
             size: 20,
           ),
-          onPressed: () => context.pop(),
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              context.pop();
+            } else {
+              context.go('/volunteer-type');
+            }
+          },
         ),
         title: Text(
           'Community Volunteers',

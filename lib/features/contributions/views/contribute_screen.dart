@@ -47,7 +47,13 @@ class ContributeScreen extends StatelessWidget {
                     top: MediaQuery.of(context).padding.top + 10,
                     left: 16,
                     child: GestureDetector(
-                      onTap: () => context.pop(),
+                      onTap: () {
+                        if (Navigator.canPop(context)) {
+                          context.pop();
+                        } else {
+                          context.go('/main');
+                        }
+                      },
                       child: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(

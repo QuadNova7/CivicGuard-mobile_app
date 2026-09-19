@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_colors.dart';
@@ -91,7 +91,7 @@ class HomeScreen extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  'Photo & Live GPS pin',
+                                  'Road & Hazard Alerts',
                                   textAlign: TextAlign.center,
                                   style: GoogleFonts.plusJakartaSans(
                                     color: Colors.white.withValues(alpha: 0.90),
@@ -248,7 +248,7 @@ class HomeScreen extends StatelessWidget {
 
               const SizedBox(height: 14),
 
-              // 3. Auto-Rotating Quick Action Carousel (Faster Continuous Fluid Glide)
+              // 3. Auto-Rotating Quick Action Carousel
               const AutoRotatingQuickActions(),
 
               const SizedBox(height: 14),
@@ -258,7 +258,7 @@ class HomeScreen extends StatelessWidget {
 
               const SizedBox(height: 14),
 
-              // 5. 24/7 Emergency Dispatch & Community Safety Hub (Fills Blank Space)
+              // 5. 24/7 Emergency Dispatch & Community Safety Hub
               const EmergencyHotlineBar(),
             ],
           ),

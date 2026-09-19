@@ -9,6 +9,107 @@ class VolunteerTypeScreen extends StatelessWidget {
   const VolunteerTypeScreen({super.key});
 
   void _navigateToCommunityVolunteer(BuildContext context) {
+    final user = AuthService.instance.currentUser;
+    if (user != null && user.isFieldCrew) {
+      // STRICT BLOCK: Response Crew cannot default into Community Volunteer without signing out
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF3C7),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.swap_horiz_rounded, color: Color(0xFFD97706), size: 22),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Switch Account Required',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primaryNavy,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'You are currently signed in as Response Crew (${user.name}).',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1E293B),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Text(
+                  'Community Volunteer operations require a Community Volunteer or Citizen account.\n\nPlease Sign Out of your Response Crew account to continue to Volunteer operations.',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    color: const Color(0xFF475569),
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(
+                'Stay as Response Crew',
+                style: GoogleFonts.plusJakartaSans(
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                AuthService.instance.logout();
+                context.push('/login', extra: {
+                  'redirect': '/community-volunteer',
+                  'role': 'COMMUNITY_VOLUNTEER',
+                  'tab': 0,
+                });
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0284C7),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                elevation: 0,
+              ),
+              child: Text(
+                'Sign Out & Continue',
+                style: GoogleFonts.plusJakartaSans(
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     if (!AuthService.instance.isLoggedIn) {
       context.push('/login', extra: {
         'redirect': '/community-volunteer',
@@ -21,13 +122,8 @@ class VolunteerTypeScreen extends StatelessWidget {
   }
 
   void _navigateToResponseCrew(BuildContext context) {
-    if (!AuthService.instance.isLoggedIn) {
-      context.push('/login?tab=0&role=FIELD_CREW&redirect=' + Uri.encodeComponent('/crew-assignments'));
-      return;
-    }
-
     final user = AuthService.instance.currentUser;
-    if (user == null || !user.isFieldCrew) {
+    if (user != null && !user.isFieldCrew) {
       // STRICT BLOCK: Community Volunteers and Citizens CANNOT access Emergency Response Crew
       showDialog(
         context: context,
@@ -61,7 +157,7 @@ class VolunteerTypeScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'You are currently signed in as a ${user?.role == "COMMUNITY_VOLUNTEER" ? "Community Volunteer" : "Citizen"} (${user?.name ?? "User"}).',
+                'You are currently signed in as ${user.role == "COMMUNITY_VOLUNTEER" ? "Community Volunteer" : "Citizen"} (${user.name}).',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
@@ -77,7 +173,7 @@ class VolunteerTypeScreen extends StatelessWidget {
                   border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
                 child: Text(
-                  'Emergency Response Crew consoles are strictly reserved for tactical rescue squads pre-assigned by Municipal Council Officers.\n\nCommunity Volunteers cannot register for or access Response Crew dispatches. Please continue in the Community Volunteer track, or sign in with an authorized crew account.',
+                  'Emergency Response Crew consoles are strictly reserved for tactical rescue squads pre-assigned by Municipal Council Officers.\n\nPlease Sign Out of your volunteer account to sign in with an authorized Response Crew account.',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 12,
                     color: const Color(0xFF475569),
@@ -101,7 +197,12 @@ class VolunteerTypeScreen extends StatelessWidget {
             ElevatedButton(
               onPressed: () {
                 Navigator.pop(ctx);
-                context.push('/login?tab=0&role=FIELD_CREW&redirect=' + Uri.encodeComponent('/crew-assignments'));
+                AuthService.instance.logout();
+                context.push('/login', extra: {
+                  'redirect': '/crew-assignments',
+                  'role': 'FIELD_CREW',
+                  'tab': 0,
+                });
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primaryNavy,
@@ -109,7 +210,7 @@ class VolunteerTypeScreen extends StatelessWidget {
                 elevation: 0,
               ),
               child: Text(
-                'Sign In as Crew',
+                'Sign Out & Sign In as Crew',
                 style: GoogleFonts.plusJakartaSans(
                   fontWeight: FontWeight.w700,
                   color: Colors.white,
@@ -119,6 +220,15 @@ class VolunteerTypeScreen extends StatelessWidget {
           ],
         ),
       );
+      return;
+    }
+
+    if (!AuthService.instance.isLoggedIn) {
+      context.push('/login', extra: {
+        'redirect': '/crew-assignments',
+        'role': 'FIELD_CREW',
+        'tab': 0,
+      });
       return;
     }
 
@@ -339,143 +449,146 @@ class VolunteerTypeScreen extends StatelessWidget {
     required Color buttonColor,
     required VoidCallback onTap,
   }) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Row: Icon + Title + Tag
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: iconBg,
-                  borderRadius: BorderRadius.circular(10),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.border),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Row: Icon + Title + Tag
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: iconBg,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, color: iconColor, size: 22),
                 ),
-                child: Icon(icon, color: iconColor, size: 22),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            title,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textPrimary,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: tagBg,
-                        borderRadius: BorderRadius.circular(5),
+                        ],
                       ),
-                      child: Text(
-                        tag,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          color: tagColor,
+                      const SizedBox(height: 2),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: tagBg,
+                          borderRadius: BorderRadius.circular(5),
                         ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 8),
-
-          // Subtitle
-          Text(
-            subtitle,
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w500,
-              color: AppColors.textSecondary,
-              height: 1.3,
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          // Key Bullets
-          ...bullets.map((b) => Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 14),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        b,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF334155),
+                        child: Text(
+                          tag,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                            color: tagColor,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              )),
-
-          const SizedBox(height: 10),
-
-          // Action Button
-          SizedBox(
-            width: double.infinity,
-            
-            height: 40,
-            child: ElevatedButton(
-              onPressed: onTap,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: buttonColor,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: EdgeInsets.zero,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    buttonText,
-                    style: GoogleFonts.plusJakartaSans(fontSize: 13, fontWeight: FontWeight.w700),
+                    ],
                   ),
-                  const SizedBox(width: 6),
-                  const Icon(Icons.arrow_forward_rounded, size: 15),
-                ],
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 8),
+
+            // Subtitle
+            Text(
+              subtitle,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w500,
+                color: AppColors.textSecondary,
+                height: 1.3,
               ),
             ),
-          ),
-        ],
+
+            const SizedBox(height: 8),
+
+            // Key Bullets
+            ...bullets.map((b) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 14),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          b,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF334155),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+
+            const SizedBox(height: 10),
+
+            // Action Button
+            SizedBox(
+              width: double.infinity,
+              height: 40,
+              child: ElevatedButton(
+                onPressed: onTap,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: buttonColor,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      buttonText,
+                      style: GoogleFonts.plusJakartaSans(fontSize: 13, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(width: 6),
+                    const Icon(Icons.arrow_forward_rounded, size: 15),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -170,9 +170,12 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/community-volunteer',
       redirect: (context, state) {
-        final isLoggedIn = AuthService.instance.isLoggedIn;
-        if (!isLoggedIn) {
+        final user = AuthService.instance.currentUser;
+        if (user == null) {
           return '/login?tab=0&role=COMMUNITY_VOLUNTEER&redirect=${Uri.encodeComponent('/community-volunteer')}';
+        }
+        if (user.isFieldCrew) {
+          return '/volunteer-type';
         }
         return null;
       },

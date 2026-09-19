@@ -1,3 +1,4 @@
+import 'package:latlong2/latlong.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/services/local_cache_service.dart';
@@ -24,8 +25,14 @@ class VolunteerOpportunityDetailsScreen extends StatelessWidget {
         elevation: 0,
         backgroundColor: Colors.white,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textDark),
-          onPressed: () => context.pop(),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textDark, size: 20),
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              context.pop();
+            } else {
+              context.go('/community-volunteer');
+            }
+          },
         ),
         title: Text(
           'Volunteer Opportunity',
@@ -128,6 +135,27 @@ class VolunteerOpportunityDetailsScreen extends StatelessWidget {
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      context.push('/map', extra: LatLng(opportunity.latitude, opportunity.longitude));
+                    },
+                    icon: const Icon(Icons.navigation_rounded, size: 16, color: Color(0xFF0284C7)),
+                    label: Text(
+                      'View on Map & Calculate Safe Detour',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF0284C7),
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFFBAE6FD)),
+                      backgroundColor: const Color(0xFFF0F9FF),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      minimumSize: const Size(double.infinity, 38),
+                    ),
                   ),
 
                   const SizedBox(height: 8),

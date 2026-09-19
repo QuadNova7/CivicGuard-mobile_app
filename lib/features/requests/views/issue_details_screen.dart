@@ -338,8 +338,14 @@ class _IssueDetailsScreenState extends State<IssueDetailsScreen> {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left_rounded, size: 28),
-          onPressed: () => context.pop(),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF0F2B48), size: 20),
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              context.pop();
+            } else {
+              context.go('/report-issue');
+            }
+          },
         ),
         title: Text('${widget.category} Details'),
       ),

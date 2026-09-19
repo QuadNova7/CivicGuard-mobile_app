@@ -1,9 +1,11 @@
+import 'package:latlong2/latlong.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../auth/services/auth_service.dart';
 import 'crew_assignments_screen.dart';
 import '../services/crew_api_service.dart';
 
@@ -80,12 +82,43 @@ class _CrewAssignmentDetailsScreenState extends State<CrewAssignmentDetailsScree
     final success = await CrewApiService.instance.updateTaskStatus(widget.assignment.id, status);
     if (!success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to broadcast status to command.')),
+        const SnackBar(
+          content: Text('Failed to broadcast status to command.'),
+          backgroundColor: Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else if (success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Expanded(child: Text('Tactical status updated to "$status" & synced with Command!')),
+            ],
+          ),
+          backgroundColor: const Color(0xFF16A34A),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+        ),
       );
     }
   }
 
   void _showStatusBottomSheet() {
+    final bool isLeader = (AuthService.instance.currentUser?.isSquadLeader == true);
+    if (!isLeader) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('🔒 Squad Leader permission required to update operational mission status.'),
+          backgroundColor: Color(0xFFD97706),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -118,15 +151,7 @@ class _CrewAssignmentDetailsScreenState extends State<CrewAssignmentDetailsScree
                   color: AppColors.primaryNavy,
                 ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Broadcast real-time deployment status to Central Operations Command.',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 12.5,
-                  color: const Color(0xFF64748B),
-                ),
-              ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               _buildStatusOption(
                 title: 'En Route / Mobilizing',
                 subtitle: 'Unit is on the road moving toward incident sector',
@@ -181,11 +206,11 @@ class _CrewAssignmentDetailsScreenState extends State<CrewAssignmentDetailsScree
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
         ),
         child: Row(
           children: [
@@ -221,6 +246,9 @@ class _CrewAssignmentDetailsScreenState extends State<CrewAssignmentDetailsScree
 
   @override
   Widget build(BuildContext context) {
+    final currentUser = AuthService.instance.currentUser;
+    final bool isLeader = (currentUser?.isSquadLeader == true);
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
@@ -228,7 +256,13 @@ class _CrewAssignmentDetailsScreenState extends State<CrewAssignmentDetailsScree
         backgroundColor: Colors.white,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.primaryNavy, size: 20),
-          onPressed: () => context.pop(),
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              context.pop();
+            } else {
+              context.go('/crew-assignments');
+            }
+          },
         ),
         title: Text(
           'Dispatch Mission Details',
@@ -263,12 +297,21 @@ class _CrewAssignmentDetailsScreenState extends State<CrewAssignmentDetailsScree
                 // Header Image
                 ClipRRect(
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-                  child: Image.asset(
-                    widget.assignment.imagePath,
-                    height: 180,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                  ),
+                  child: widget.assignment.imagePath.startsWith('http')
+                    ? Image.network(
+                        widget.assignment.imagePath,
+                        height: 180,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Image.asset('assets/images/1.jpg', height: 180, width: double.infinity, fit: BoxFit.cover),
+                      )
+                    : Image.asset(
+                        widget.assignment.imagePath,
+                        height: 180,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(height: 180, color: const Color(0xFF0F172A)),
+                      ),
                 ),
                 Padding(
                   padding: const EdgeInsets.all(16),
@@ -347,6 +390,30 @@ class _CrewAssignmentDetailsScreenState extends State<CrewAssignmentDetailsScree
                           height: 1.45,
                         ),
                       ),
+                      const SizedBox(height: 14),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          final dest = LatLng(widget.assignment.latitude, widget.assignment.longitude);
+                          context.push('/map', extra: dest);
+                        },
+                        icon: const Icon(Icons.navigation_rounded, size: 18),
+                        label: Text(
+                          'Navigate on Tactical Map (Safe Route)',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0F2B48),
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(double.infinity, 44),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 2,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -377,10 +444,35 @@ class _CrewAssignmentDetailsScreenState extends State<CrewAssignmentDetailsScree
                         color: AppColors.primaryNavy,
                       ),
                     ),
-                    InkWell(
-                      onTap: _showStatusBottomSheet,
-                      borderRadius: BorderRadius.circular(6),
-                      child: Container(
+                    if (isLeader)
+                      InkWell(
+                        onTap: _showStatusBottomSheet,
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: _statusBg,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: _statusColor.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              Text(
+                                _currentStatus,
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: _statusColor,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(Icons.edit_rounded, size: 12, color: _statusColor),
+                            ],
+                          ),
+                        ),
+                      )
+                    else
+                      Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
                           color: _statusBg,
@@ -398,11 +490,10 @@ class _CrewAssignmentDetailsScreenState extends State<CrewAssignmentDetailsScree
                               ),
                             ),
                             const SizedBox(width: 4),
-                            Icon(Icons.edit_rounded, size: 12, color: _statusColor),
+                            const Icon(Icons.lock_outline_rounded, size: 12, color: Color(0xFF64748B)),
                           ],
                         ),
                       ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 14),
@@ -422,7 +513,7 @@ class _CrewAssignmentDetailsScreenState extends State<CrewAssignmentDetailsScree
             ),
           ),
 
-          // 3. Ground SitRep & Evidence Photo Uploader
+          // 3. Ground SitRep Submission Section (Leader Only Form vs Member Locked View)
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             padding: const EdgeInsets.all(16),
@@ -431,186 +522,297 @@ class _CrewAssignmentDetailsScreenState extends State<CrewAssignmentDetailsScree
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: const Color(0xFFE2E8F0)),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Field Situation Report (SitRep)',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primaryNavy,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // Rescued Civilians Counter
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Civilians Rescued / Evacuated:',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF334155),
-                        ),
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        IconButton(
-                          onPressed: _evacuatedCount > 0 ? () => setState(() => _evacuatedCount--) : null,
-                          icon: const Icon(Icons.remove_circle_outline_rounded),
-                          color: const Color(0xFF64748B),
-                        ),
-                        Text(
-                          '$_evacuatedCount',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.primaryNavy,
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () => setState(() => _evacuatedCount++),
-                          icon: const Icon(Icons.add_circle_outline_rounded),
-                          color: const Color(0xFF16A34A),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                // Photo Attachment Row
-                Text(
-                  'Attach Live On-Scene Evidence Photos:',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF475569),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: () => _pickEvidencePhoto(ImageSource.camera),
-                      icon: const Icon(Icons.camera_alt_rounded, size: 16),
-                      label: const Text('Take Photo'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0284C7),
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      onPressed: () => _pickEvidencePhoto(ImageSource.gallery),
-                      icon: const Icon(Icons.photo_library_rounded, size: 16),
-                      label: const Text('Gallery'),
-                      style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                    ),
-                  ],
-                ),
-                if (_evidencePhotos.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 70,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: _evidencePhotos.length,
-                      itemBuilder: (ctx, i) {
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.file(
-                              File(_evidencePhotos[i].path),
-                              width: 70,
-                              height: 70,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 14),
-                TextField(
-                  controller: _sitrepNotesController,
-                  maxLines: 2,
-                  decoration: InputDecoration(
-                    hintText: 'Enter on-ground tactical notes (e.g. water receded by 1ft)...',
-                    hintStyle: GoogleFonts.plusJakartaSans(fontSize: 12.5, color: const Color(0xFF94A3B8)),
-                    filled: true,
-                    fillColor: const Color(0xFFF8FAFC),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                    ),
-                    contentPadding: const EdgeInsets.all(10),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isTransmitting ? null : () async {
-                      setState(() => _isTransmitting = true);
-                      
-                      final photo = _evidencePhotos.isNotEmpty ? File(_evidencePhotos.first.path) : null;
-                      
-                      final success = await CrewApiService.instance.submitSitRep(
-                        widget.assignment.id,
-                        _sitrepNotesController.text,
-                        _evacuatedCount,
-                        photo,
-                      );
-                      
-                      if (mounted) {
-                        setState(() => _isTransmitting = false);
-                        
-                        if (success) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Field SitRep transmitted to Operations Command!'),
-                              backgroundColor: Color(0xFF16A34A),
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
-                          // Auto update local status to complete
-                          _updateStatusBackend('Completed', const Color(0xFF16A34A), const Color(0xFFDCFCE7));
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Failed to transmit SitRep. Check connection.'),
-                              backgroundColor: Color(0xFFEF4444),
-                            ),
-                          );
-                        }
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryNavy,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    child: _isTransmitting 
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : const Text('Transmit Ground SitRep'),
-                  ),
-                ),
-              ],
-            ),
+            child: isLeader
+                ? _buildLeaderSitRepForm()
+                : _buildMemberLockedSitRepView(currentUser),
           ),
         ],
       ),
+    );
+  }
+
+  // Active form for Squad Leaders
+  Widget _buildLeaderSitRepForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          runSpacing: 6,
+          children: [
+            Text(
+              'Field Situation Report (SitRep)',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 14.5,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primaryNavy,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFF86EFAC)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.verified_rounded, size: 12, color: Color(0xFF16A34A)),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Squad Leader',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF16A34A),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // Rescued Civilians Counter
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                'Civilians Rescued / Evacuated:',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF334155),
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                IconButton(
+                  onPressed: _evacuatedCount > 0 ? () => setState(() => _evacuatedCount--) : null,
+                  icon: const Icon(Icons.remove_circle_outline_rounded),
+                  color: const Color(0xFF64748B),
+                ),
+                Text(
+                  '$_evacuatedCount',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primaryNavy,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => setState(() => _evacuatedCount++),
+                  icon: const Icon(Icons.add_circle_outline_rounded),
+                  color: const Color(0xFF16A34A),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        // Photo Attachment Row
+        Text(
+          'Attach Live On-Scene Evidence Photos:',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF475569),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            ElevatedButton.icon(
+              onPressed: () => _pickEvidencePhoto(ImageSource.camera),
+              icon: const Icon(Icons.camera_alt_rounded, size: 16),
+              label: const Text('Take Photo'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0284C7),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: () => _pickEvidencePhoto(ImageSource.gallery),
+              icon: const Icon(Icons.photo_library_rounded, size: 16),
+              label: const Text('Gallery'),
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ],
+        ),
+        if (_evidencePhotos.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 70,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _evidencePhotos.length,
+              itemBuilder: (ctx, i) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(
+                      File(_evidencePhotos[i].path),
+                      width: 70,
+                      height: 70,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+        const SizedBox(height: 14),
+        TextField(
+          controller: _sitrepNotesController,
+          maxLines: 2,
+          decoration: InputDecoration(
+            hintText: 'Enter on-ground tactical notes (e.g. water pumped out, road cleared)...',
+            hintStyle: GoogleFonts.plusJakartaSans(fontSize: 12.5, color: const Color(0xFF94A3B8)),
+            filled: true,
+            fillColor: const Color(0xFFF8FAFC),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+            ),
+            contentPadding: const EdgeInsets.all(10),
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _isTransmitting ? null : () async {
+              setState(() => _isTransmitting = true);
+              
+              final photo = _evidencePhotos.isNotEmpty ? File(_evidencePhotos.first.path) : null;
+              
+              final success = await CrewApiService.instance.submitSitRep(
+                widget.assignment.id,
+                _sitrepNotesController.text,
+                _evacuatedCount,
+                photo,
+              );
+              
+              if (mounted) {
+                setState(() => _isTransmitting = false);
+                
+                if (success) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Field SitRep transmitted to Operations Command! Road verified reopened.'),
+                      backgroundColor: Color(0xFF16A34A),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                  // Auto update local status to complete
+                  _updateStatusBackend('Completed', const Color(0xFF16A34A), const Color(0xFFDCFCE7));
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Failed to transmit SitRep. Check connection.'),
+                      backgroundColor: Color(0xFFEF4444),
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryNavy,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: _isTransmitting 
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                : Text('Transmit Ground SitRep', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 13)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Locked view for regular crew members
+  Widget _buildMemberLockedSitRepView(UserModel? user) {
+    UserModel leader = AuthService.colomboSquads[0];
+    if (user != null && user.crewId != null) {
+      try {
+        leader = AuthService.colomboSquads.firstWhere(
+          (s) => s.crewId != null && s.crewId == user.crewId,
+          orElse: () => AuthService.colomboSquads[0],
+        );
+      } catch (_) {
+        leader = AuthService.colomboSquads[0];
+      }
+    }
+    final leaderName = leader.name;
+
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: const BoxDecoration(
+            color: Color(0xFFFEF3C7),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.shield_rounded, color: Color(0xFFD97706), size: 28),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Squad Leader Authorization Required',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            color: AppColors.primaryNavy,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Only the designated Squad Leader ($leaderName) is authorized to transmit the final field SitRep, upload resolution evidence, and reopen municipal roads.',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 12,
+            color: const Color(0xFF64748B),
+            height: 1.45,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFEFF6FF),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFBFDBFE)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.visibility_rounded, color: Color(0xFF0284C7), size: 15),
+              const SizedBox(width: 6),
+              Text(
+                'Your Role: ${user?.memberTitle ?? 'Tactical Field Responder'} (Read-Only)',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF0284C7),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

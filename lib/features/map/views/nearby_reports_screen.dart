@@ -1,9 +1,12 @@
+import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../core/config/mapbox_config.dart';
+import '../../../core/services/location_helper.dart';
 import '../../../core/theme/app_colors.dart';
 import '../services/map_api_service.dart';
 
@@ -25,6 +28,8 @@ class _NearbyReportsScreenState extends State<NearbyReportsScreen>
   LatLng? _userLocation;
   final bool _showLegend = true;
   bool _isLoadingLive = false;
+  bool _isLocating = false;
+  StreamSubscription<Position>? _positionStreamSub;
 
   // Pulse animation controller for user location beacon
   late AnimationController _pulseController;
@@ -36,22 +41,73 @@ class _NearbyReportsScreenState extends State<NearbyReportsScreen>
   // Real-world Sri Lanka Incidents & Relief Centers with road-snapped coordinates (Live Synced + Seed Baseline)
   List<Map<String, dynamic>> _incidents = [];
 
+  // Active Closed Roads retrieved from backend database
+  List<Map<String, dynamic>> _closedRoads = [];
+
   // Currently drawn route on map
   List<LatLng> _currentRoute = [];
+  RouteInfo? _currentRouteInfo;
+
+  void _clearRoute() {
+    setState(() {
+      _currentRoute = [];
+      _currentRouteInfo = null;
+    });
+  }
+
+  void _fitRouteBounds(List<LatLng> points) {
+    if (points.isEmpty) return;
+    double minLat = points.first.latitude;
+    double maxLat = points.first.latitude;
+    double minLng = points.first.longitude;
+    double maxLng = points.first.longitude;
+
+    for (final p in points) {
+      if (p.latitude < minLat) minLat = p.latitude;
+      if (p.latitude > maxLat) maxLat = p.latitude;
+      if (p.longitude < minLng) minLng = p.longitude;
+      if (p.longitude > maxLng) maxLng = p.longitude;
+    }
+
+    final centerLat = (minLat + maxLat) / 2;
+    final centerLng = (minLng + maxLng) / 2;
+
+    final latDiff = maxLat - minLat;
+    final lngDiff = maxLng - minLng;
+    final maxDiff = math.max(latDiff, lngDiff);
+
+    double zoom = 14.0;
+    if (maxDiff > 0.5) {
+      zoom = 9.5;
+    } else if (maxDiff > 0.2) {
+      zoom = 11.0;
+    } else if (maxDiff > 0.08) {
+      zoom = 12.5;
+    } else if (maxDiff > 0.03) {
+      zoom = 13.8;
+    } else {
+      zoom = 14.8;
+    }
+
+    _mapController.move(LatLng(centerLat, centerLng), zoom);
+  }
 
   Future<void> _drawRouteTo(LatLng destination) async {
     if (_userLocation == null) return;
     
-    // Clear existing route to show loading state implicitly or just fetch new
-    setState(() => _currentRoute = []);
+    setState(() {
+      _currentRoute = [];
+      _currentRouteInfo = null;
+    });
 
-    final routePoints = await MapApiService.instance.fetchRoute(_userLocation!, destination);
+    final routeInfo = await MapApiService.instance.fetchRouteDetails(_userLocation!, destination);
     
-    if (mounted && routePoints.isNotEmpty) {
+    if (mounted && routeInfo.points.isNotEmpty) {
       setState(() {
-        _currentRoute = routePoints;
+        _currentRoute = routeInfo.points;
+        _currentRouteInfo = routeInfo;
       });
-      // Optionally adjust map bounds to fit the route
+      _fitRouteBounds(routeInfo.points);
     }
   }
 
@@ -65,20 +121,89 @@ class _NearbyReportsScreenState extends State<NearbyReportsScreen>
     _pulseAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeOut),
     );
-    
-    _centerUserLocation();
+
+    // Initial baseline closed roads so map displays them instantly
+    _closedRoads = [
+      {
+        'id': 'b1111111-1111-1111-1111-111111111111',
+        'name': 'Havelock Road (Near Canal Bridge)',
+        'latitude': 6.8785,
+        'longitude': 79.8655,
+        'coordinates': const LatLng(6.8785, 79.8655),
+        'road_type': 'PRIMARY',
+        'is_closed': true,
+      },
+      {
+        'id': 'b5555555-5555-5555-5555-555555555555',
+        'name': 'Baseline Road (Kelani Bridge Flyover Sector)',
+        'latitude': 6.9480,
+        'longitude': 79.8780,
+        'coordinates': const LatLng(6.9480, 79.8780),
+        'road_type': 'HIGHWAY',
+        'is_closed': true,
+      },
+      {
+        'id': '21db25c9-0e31-424d-81e5-a49cf9ab2d82',
+        'name': 'Moratuwa Galle Road',
+        'latitude': 6.7985,
+        'longitude': 79.8895,
+        'coordinates': const LatLng(6.7985, 79.8895),
+        'road_type': 'PRIMARY',
+        'is_closed': true,
+      },
+      {
+        'id': 'a77531bf-54f0-40be-8f6b-39a54bc5822b',
+        'name': 'Galle Road (Moratuwa / Katubedda)',
+        'latitude': 6.7950,
+        'longitude': 79.8964,
+        'coordinates': const LatLng(6.7950, 79.8964),
+        'road_type': 'PRIMARY',
+        'is_closed': true,
+      },
+    ];
+
+    _startLocationTracking();
     _loadLiveBackendData();
   }
+
+  void _startLocationTracking() async {
+    await _centerUserLocation(silent: true);
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+        _positionStreamSub = Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 3,
+          ),
+        ).listen((Position pos) {
+          if (mounted) {
+            setState(() {
+              _userLocation = LatLng(pos.latitude, pos.longitude);
+            });
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
   /// Live Telemetry Ingestion from Backend Services
   Future<void> _loadLiveBackendData() async {
     setState(() => _isLoadingLive = true);
     try {
       final liveHazards = await MapApiService.instance.fetchMapHazards();
       final liveShelters = await MapApiService.instance.fetchReliefShelters();
+      final liveClosedRoads = await MapApiService.instance.fetchClosedRoads();
 
       if (mounted) {
         setState(() {
           _incidents = [...liveHazards, ...liveShelters];
+          if (liveClosedRoads.isNotEmpty) {
+            _closedRoads = liveClosedRoads;
+          }
         });
       }
     } catch (_) {
@@ -92,6 +217,7 @@ class _NearbyReportsScreenState extends State<NearbyReportsScreen>
 
   @override
   void dispose() {
+    _positionStreamSub?.cancel();
     _pulseController.dispose();
     super.dispose();
   }
@@ -113,40 +239,102 @@ class _NearbyReportsScreenState extends State<NearbyReportsScreen>
     return _incidents;
   }
 
+  /// Computes visible polyline coordinates for a closed road
+  List<LatLng> _getClosedRoadSegment(Map<String, dynamic> road) {
+    final name = (road['name'] ?? '').toString().toLowerCase();
+    final LatLng pos = (road['coordinates'] is LatLng)
+        ? road['coordinates'] as LatLng
+        : LatLng(
+            (road['latitude'] as num).toDouble(),
+            (road['longitude'] as num).toDouble(),
+          );
+
+    if (name.contains('havelock')) {
+      return [
+        const LatLng(6.8835, 79.8640),
+        const LatLng(6.8810, 79.8648),
+        const LatLng(6.8785, 79.8655),
+        const LatLng(6.8755, 79.8665),
+        const LatLng(6.8725, 79.8678),
+      ];
+    } else if (name.contains('baseline')) {
+      return [
+        const LatLng(6.9540, 79.8765),
+        const LatLng(6.9510, 79.8772),
+        const LatLng(6.9480, 79.8780),
+        const LatLng(6.9450, 79.8788),
+        const LatLng(6.9410, 79.8795),
+      ];
+    } else if (name.contains('katubedda')) {
+      return [
+        const LatLng(6.7980, 79.8935),
+        const LatLng(6.7950, 79.8964),
+        const LatLng(6.7915, 79.8995),
+        const LatLng(6.7880, 79.9025),
+      ];
+    } else if (name.contains('moratuwa')) {
+      return [
+        const LatLng(6.8040, 79.8850),
+        const LatLng(6.8010, 79.8875),
+        const LatLng(6.7985, 79.8895),
+        const LatLng(6.7955, 79.8920),
+        const LatLng(6.7930, 79.8945),
+      ];
+    }
+
+    // Default segment around coordinates
+    return [
+      LatLng(pos.latitude + 0.0035, pos.longitude - 0.0018),
+      pos,
+      LatLng(pos.latitude - 0.0035, pos.longitude + 0.0018),
+    ];
+  }
+
   Future<void> _centerUserLocation({bool silent = false}) async {
+    if (_isLocating) return;
+    if (mounted) setState(() => _isLocating = true);
+
     try {
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.whileInUse ||
-          permission == LocationPermission.always) {
-        final position = await Geolocator.getCurrentPosition();
-        if (mounted) {
-          setState(() {
-            _userLocation = LatLng(position.latitude, position.longitude);
-          });
-          _mapController.move(_userLocation!, 14.5);
-        }
-      } else {
-        // Fallback default location (Galle Road, Idama / Moratuwa)
-        if (mounted) {
-          setState(() {
-            _userLocation = const LatLng(6.7795, 79.8835);
-          });
-          if (!silent) {
-            _mapController.move(_userLocation!, 14.5);
-          }
+      final loc = await LocationHelper.getCurrentLiveLocation();
+      if (mounted) {
+        setState(() {
+          _userLocation = LatLng(loc.latitude, loc.longitude);
+          _isLocating = false;
+        });
+        _mapController.move(_userLocation!, 15.0);
+        if (!silent) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.gps_fixed_rounded, color: Colors.white, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'GPS Position: ${loc.formattedAddress}',
+                      style: GoogleFonts.plusJakartaSans(fontSize: 12, fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: const Color(0xFF0F2B48),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          );
         }
       }
     } catch (_) {
       if (mounted) {
         setState(() {
-          _userLocation = const LatLng(6.7795, 79.8835);
+          _userLocation ??= const LatLng(6.7920, 79.8850);
+          _isLocating = false;
         });
-        if (!silent) {
-          _mapController.move(_userLocation!, 14.5);
-        }
+        _mapController.move(_userLocation!, 14.5);
       }
     }
 
@@ -159,199 +347,326 @@ class _NearbyReportsScreenState extends State<NearbyReportsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Stack(
-        children: [
-          // 1. Map View or List View
-          _isMapView ? _buildMap() : _buildListView(),
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // 1. Top Modern Pure White Header Card (Clean separation from map tiles)
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF0F2B48).withValues(alpha: 0.08),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+                border: const Border(
+                  bottom: BorderSide(
+                    color: Color(0xFFE2E8F0),
+                    width: 1.0,
+                  ),
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Top Controls Row
+                  Row(
+                    children: [
+                      // Map / List Pill Switcher
+                      Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(22),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildViewTab(Icons.map_rounded, 'Map', true),
+                            _buildViewTab(Icons.view_list_rounded, 'List', false),
+                          ],
+                        ),
+                      ),
 
-          // 2. Top Navigation & Filter Bar
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Column(
-                  children: [
-                    // Top Search / View Switcher Row
-                    Row(
-                      children: [
-                        // Map / List Pill Toggle
-                        Container(
-                          padding: const EdgeInsets.all(3),
+                      const SizedBox(width: 8),
+
+                      // Live Sync Indicator Button
+                      GestureDetector(
+                        onTap: _loadLiveBackendData,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                           decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(22),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFF0F2B48).withValues(alpha: 0.12),
-                                blurRadius: 10,
-                                offset: const Offset(0, 3),
-                              ),
-                            ],
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFFE2E8F0), width: 1.0),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              _buildViewTab(Icons.map_rounded, 'Map', true),
-                              _buildViewTab(Icons.view_list_rounded, 'List', false),
+                              _isLoadingLive
+                                  ? const SizedBox(
+                                      width: 12,
+                                      height: 12,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Color(0xFF0284C7),
+                                      ),
+                                    )
+                                  : Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFF10B981),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                              const SizedBox(width: 5),
+                              Text(
+                                'LIVE',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                  color: const Color(0xFF0F2B48),
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
                             ],
                           ),
                         ),
+                      ),
 
-                        const SizedBox(width: 8),
+                      const Spacer(),
 
-                        // Live Sync Indicator Button
-                        GestureDetector(
-                          onTap: _loadLiveBackendData,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFF0F2B48).withValues(alpha: 0.10),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
+                      // Map Style Switcher Button (Streets, Satellite, Dark, Outdoors)
+                      GestureDetector(
+                        onTap: _showStylePicker,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 7,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFFE2E8F0), width: 1.0),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.layers_rounded,
+                                size: 15,
+                                color: Color(0xFF0F2B48),
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                _getStyleLabel(_currentStyle),
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF0F2B48),
                                 ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _isLoadingLive
-                                    ? const SizedBox(
-                                        width: 12,
-                                        height: 12,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Color(0xFF0284C7),
-                                        ),
-                                      )
-                                    : Container(
-                                        width: 8,
-                                        height: 8,
-                                        decoration: const BoxDecoration(
-                                          color: Color(0xFF10B981),
-                                          shape: BoxShape.circle,
-                                        ),
-                                      ),
-                                const SizedBox(width: 5),
-                                Text(
-                                  'LIVE',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w900,
-                                    color: const Color(0xFF0F2B48),
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
+                      ),
+                    ],
+                  ),
 
-                        const Spacer(),
+                  const SizedBox(height: 10),
 
-                        // Map Style Switcher (Streets, Satellite, Dark, Outdoors)
-                        GestureDetector(
-                          onTap: _showStylePicker,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFF0F2B48).withValues(alpha: 0.12),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.layers_rounded,
-                                  size: 16,
-                                  color: Color(0xFF0F2B48),
-                                ),
-                                const SizedBox(width: 5),
-                                Text(
-                                  _getStyleLabel(_currentStyle),
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w800,
-                                    color: const Color(0xFF0F2B48),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+                  // Filter Horizontal Chips Matching Marker Color Coding
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    child: Row(
+                      children: [
+                        _buildFilterChip('ALL', 'All Hazards', const Color(0xFF0F2B48), Icons.layers_outlined),
+                        _buildFilterChip('FLOODS', '🌊 Floods', const Color(0xFF2563EB), Icons.water_drop_rounded),
+                        _buildFilterChip('BLOCKAGES', '⚠️ Blockages', const Color(0xFFD97706), Icons.warning_amber_rounded),
+                        _buildFilterChip('ROAD_CLOSED', '⛔ Closures', const Color(0xFFDC2626), Icons.block_rounded),
+                        _buildFilterChip('SHELTERS', '🏠 Shelters', const Color(0xFF059669), Icons.home_rounded),
                       ],
                     ),
+                  ),
+                ],
+              ),
+            ),
 
-                    const SizedBox(height: 8),
+            // 2. Map View / List View container in Expanded (Map height starts cleanly below top filters)
+            Expanded(
+              child: _isMapView
+                  ? Stack(
+                      children: [
+                        _buildMap(),
 
-                    // Filter Horizontal Chips Matching Marker Color Coding
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
-                      child: Row(
-                        children: [
-                          _buildFilterChip('ALL', 'All Hazards', const Color(0xFF0F2B48), Icons.layers_outlined),
-                          _buildFilterChip('FLOODS', '🌊 Floods', const Color(0xFF2563EB), Icons.water_drop_rounded),
-                          _buildFilterChip('BLOCKAGES', '⚠️ Blockages', const Color(0xFFD97706), Icons.warning_amber_rounded),
-                          _buildFilterChip('ROAD_CLOSED', '⛔ Closures', const Color(0xFFDC2626), Icons.block_rounded),
-                          _buildFilterChip('SHELTERS', '🏠 Shelters', const Color(0xFF059669), Icons.home_rounded),
-                        ],
+                        // Active Route Navigation HUD (at top: 12 of the map container)
+                        if (_currentRouteInfo != null && _currentRoute.isNotEmpty)
+                          Positioned(
+                            top: 12,
+                            left: 16,
+                            right: 16,
+                            child: _buildActiveRouteHud(),
+                          ),
+
+                        // Floating Map Legend Overlay (Explaining Safe Detour & Closed Road Lines)
+                        if (_showLegend)
+                          Positioned(
+                            left: 16,
+                            bottom: _selectedIncident != null ? 180 : 90,
+                            child: _buildMapLegendOverlay(),
+                          ),
+
+                        // Floating Re-Center GPS Button
+                        Positioned(
+                          right: 16,
+                          bottom: _selectedIncident != null ? 180 : 90,
+                          child: FloatingActionButton(
+                            mini: true,
+                            onPressed: () => _centerUserLocation(silent: false),
+                            backgroundColor: Colors.white,
+                            foregroundColor: const Color(0xFF2563EB),
+                            elevation: 4,
+                            child: _isLocating
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Color(0xFF2563EB),
+                                    ),
+                                  )
+                                : const Icon(Icons.my_location_rounded, size: 22),
+                          ),
+                        ),
+
+                        // Bottom Selected Incident Card
+                        if (_selectedIncident != null)
+                          Positioned(
+                            left: 16,
+                            right: 16,
+                            bottom: 80,
+                            child: _buildIncidentBottomCard(_selectedIncident!),
+                          ),
+                      ],
+                    )
+                  : _buildListView(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// High-Precision Navigation HUD Banner with Distance, Duration, Safe Detour Telemetry & Clear Action
+  Widget _buildActiveRouteHud() {
+    if (_currentRouteInfo == null || _currentRoute.isEmpty) return const SizedBox.shrink();
+    final info = _currentRouteInfo!;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: info.isDetour ? const Color(0xFF10B981) : const Color(0xFF2563EB),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F2B48).withValues(alpha: 0.16),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: info.isDetour ? const Color(0xFFECFDF5) : const Color(0xFFDBEAFE),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              info.isDetour ? Icons.alt_route_rounded : Icons.navigation_rounded,
+              size: 20,
+              color: info.isDetour ? const Color(0xFF059669) : const Color(0xFF2563EB),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      '${info.distanceKm} km',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                        color: const Color(0xFF0F2B48),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '~${info.durationMinutes} mins',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF475569),
+                        ),
                       ),
                     ),
                   ],
                 ),
+                const SizedBox(height: 2),
+                Text(
+                  info.isDetour
+                      ? '🛡️ Safe Detour Active (${info.avoidedRoads.isNotEmpty ? info.avoidedRoads.first : "Closed roads avoided"})'
+                      : '🧭 Turn-by-Turn Safe Driving Route',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: info.isDetour ? const Color(0xFF059669) : const Color(0xFF2563EB),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          InkWell(
+            onTap: _clearRoute,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.close_rounded,
+                size: 18,
+                color: Color(0xFF64748B),
               ),
             ),
           ),
-
-          // 3. Floating Map Legend Overlay (Explaining Green Route & Red Dashed Line)
-          if (_isMapView && _showLegend)
-            Positioned(
-              left: 16,
-              bottom: _selectedIncident != null ? 180 : 90,
-              child: _buildMapLegendOverlay(),
-            ),
-
-          // 4. Floating Re-Center GPS Button (Map View Only)
-          if (_isMapView)
-            Positioned(
-              right: 16,
-              bottom: _selectedIncident != null ? 180 : 90,
-              child: FloatingActionButton(
-                mini: true,
-                onPressed: () => _centerUserLocation(silent: false),
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF2563EB),
-                elevation: 4,
-                child: const Icon(Icons.my_location_rounded, size: 22),
-              ),
-            ),
-
-          // 5. Bottom Selected Incident Card (Map View Only)
-          if (_isMapView && _selectedIncident != null)
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 80,
-              child: _buildIncidentBottomCard(_selectedIncident!),
-            ),
         ],
       ),
     );
@@ -544,19 +859,63 @@ class _NearbyReportsScreenState extends State<NearbyReportsScreen>
               .toList(),
         ),
 
-        // 3. Dynamic Safe Routing Polyline Layer (Active calculated route only)
+        // 3. Dynamic Safe Routing & Closed Road Polyline Layer
         PolylineLayer(
           polylines: [
-            if (_currentRoute.isNotEmpty)
+            // A. Closed Roads (Prominently rendered in High-Visibility Red Casing)
+            for (final road in _closedRoads) ...[
+              // Outer warning casing glow
+              Polyline(
+                points: _getClosedRoadSegment(road),
+                color: const Color(0xFFDC2626).withValues(alpha: 0.35),
+                strokeWidth: 9.0,
+              ),
+              // Solid Red Alert Barrier
+              Polyline(
+                points: _getClosedRoadSegment(road),
+                color: const Color(0xFFDC2626),
+                strokeWidth: 5.0,
+              ),
+              // Inner crimson center line
+              Polyline(
+                points: _getClosedRoadSegment(road),
+                color: const Color(0xFF991B1B),
+                strokeWidth: 2.0,
+              ),
+            ],
+
+            // B. Dynamic Active Route Polyline (Vibrant Electric Blue Highlight & Emerald Safe Detour)
+            if (_currentRoute.isNotEmpty) ...[
+              // Soft glow casing underlay
               Polyline(
                 points: _currentRoute,
-                color: const Color(0xFF2563EB),
+                color: (_currentRouteInfo?.isDetour == true
+                        ? const Color(0xFF059669)
+                        : const Color(0xFF0284C7))
+                    .withValues(alpha: 0.40),
+                strokeWidth: 10.0,
+              ),
+              // Crisp high-visibility core polyline
+              Polyline(
+                points: _currentRoute,
+                color: _currentRouteInfo?.isDetour == true
+                    ? const Color(0xFF10B981) // Emerald Green for Safe Detour
+                    : const Color(0xFF2563EB), // Electric Royal Blue for Direct Route
                 strokeWidth: 5.5,
               ),
+              // Bright center highlight ribbon
+              Polyline(
+                points: _currentRoute,
+                color: _currentRouteInfo?.isDetour == true
+                    ? const Color(0xFF6EE7B7)
+                    : const Color(0xFF60A5FA),
+                strokeWidth: 2.0,
+              ),
+            ],
           ],
         ),
 
-        // 4. Interactive Marker Layer (Hazards, Shelters & Live User GPS Beacon)
+        // 4. Interactive Marker Layer (Hazards, Shelters, Closed Road Badges & Live User GPS Beacon)
         MarkerLayer(
           markers: [
             // Live User Location Pulsing GPS Beacon (On Galle Road Idama approach)
@@ -568,6 +927,56 @@ class _NearbyReportsScreenState extends State<NearbyReportsScreen>
                 alignment: Alignment.center,
                 child: _buildLiveUserBeacon(),
               ),
+
+            // Closed Road Warning Badges
+            ..._closedRoads.map((road) {
+              final pos = (road['coordinates'] is LatLng)
+                  ? road['coordinates'] as LatLng
+                  : LatLng(
+                      (road['latitude'] as num).toDouble(),
+                      (road['longitude'] as num).toDouble(),
+                    );
+              return Marker(
+                point: pos,
+                width: 105,
+                height: 32,
+                alignment: Alignment.center,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDC2626),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white, width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFDC2626).withValues(alpha: 0.40),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.block_rounded, color: Colors.white, size: 12),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          'Closed Road',
+                          style: GoogleFonts.plusJakartaSans(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
 
             // Incident Hazard & Shelter Teardrop Pins
             ..._filteredIncidents.map((incident) {
@@ -641,7 +1050,7 @@ class _NearbyReportsScreenState extends State<NearbyReportsScreen>
                 ],
               ),
             ),
-            // "📍 YOU" Mini Label Badge positioned above the dot
+            // "YOU" Mini Label Badge positioned above the dot
             Positioned(
               top: 0,
               child: Container(
@@ -673,9 +1082,9 @@ class _NearbyReportsScreenState extends State<NearbyReportsScreen>
                     Text(
                       'YOU',
                       style: GoogleFonts.plusJakartaSans(
-                        color: Colors.white,
-                        fontSize: 8.5,
+                        fontSize: 9.5,
                         fontWeight: FontWeight.w900,
+                        color: Colors.white,
                         letterSpacing: 0.5,
                       ),
                     ),
@@ -689,89 +1098,71 @@ class _NearbyReportsScreenState extends State<NearbyReportsScreen>
     );
   }
 
-  /// Custom Teardrop Pin with Floating Category Label Matching Filter Bar
+  /// Custom Teardrop Hazard Pin with floating title banner
   Widget _buildTeardropHazardPin(Map<String, dynamic> incident, bool isSelected) {
     Color themeColor;
     IconData iconData;
-    String emojiTag;
+    String miniBadge;
 
-    switch (incident['type']) {
-      case 'FLOOD':
-        themeColor = const Color(0xFF2563EB); // Vibrant Blue
-        iconData = Icons.water_drop_rounded;
-        emojiTag = '🌊';
-        break;
-      case 'BLOCKAGE':
-        themeColor = const Color(0xFFD97706); // Warning Amber
-        iconData = Icons.warning_amber_rounded;
-        emojiTag = '⚠️';
-        break;
-      case 'ROAD_CLOSED':
-        themeColor = const Color(0xFFDC2626); // Alert Red
-        iconData = Icons.block_rounded;
-        emojiTag = '⛔';
-        break;
-      case 'SHELTER':
-      default:
-        themeColor = const Color(0xFF059669); // Relief Emerald
-        iconData = Icons.night_shelter_rounded;
-        emojiTag = '🏠';
-        break;
+    if (incident['type'] == 'FLOOD') {
+      themeColor = const Color(0xFF2563EB); // Vibrant Blue
+      iconData = Icons.water_drop_rounded;
+      miniBadge = '🌊 Flood';
+    } else if (incident['type'] == 'BLOCKAGE') {
+      themeColor = const Color(0xFFD97706); // Amber Warning
+      iconData = Icons.warning_amber_rounded;
+      miniBadge = '⚠️ Hazard';
+    } else if (incident['type'] == 'ROAD_CLOSED') {
+      themeColor = const Color(0xFFDC2626); // Crimson Red
+      iconData = Icons.block_rounded;
+      miniBadge = '⛔ Closed';
+    } else if (incident['type'] == 'SHELTER') {
+      themeColor = const Color(0xFF059669); // Emerald Green
+      iconData = Icons.home_rounded;
+      miniBadge = '🏠 Relief';
+    } else {
+      themeColor = const Color(0xFF0F2B48);
+      iconData = Icons.location_on_rounded;
+      miniBadge = '📍 Report';
     }
-
-    final labelText = incident['label'] as String? ?? incident['type'] as String;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // 1. Floating Mini Label Badge
+        // Floating Mini Title Chip (Visible on Map)
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
-            color: isSelected ? themeColor : Colors.white,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: isSelected ? Colors.white : themeColor,
-              width: 1.2,
-            ),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: themeColor, width: 1.2),
             boxShadow: [
               BoxShadow(
-                color: themeColor.withValues(alpha: isSelected ? 0.40 : 0.20),
-                blurRadius: isSelected ? 8 : 4,
+                color: themeColor.withValues(alpha: 0.35),
+                blurRadius: 6,
                 offset: const Offset(0, 2),
               ),
             ],
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                emojiTag,
-                style: const TextStyle(fontSize: 8),
-              ),
-              const SizedBox(width: 2),
-              Text(
-                labelText,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 8.5,
-                  fontWeight: FontWeight.w800,
-                  color: isSelected ? Colors.white : const Color(0xFF0F2B48),
-                ),
-              ),
-            ],
+          child: Text(
+            miniBadge,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF0F2B48),
+            ),
           ),
         ),
 
         const SizedBox(height: 2),
 
-        // 2. Teardrop Map Pin Head & Needle
+        // Teardrop Marker Body
         Stack(
           alignment: Alignment.center,
-          clipBehavior: Clip.none,
           children: [
-            // Pointer Needle Tip (Rotated Diamond/Square)
+            // Lower diamond point
             Positioned(
-              bottom: -4,
+              bottom: 0,
               child: Transform.rotate(
                 angle: 0.785398, // 45 degrees
                 child: Container(
@@ -963,59 +1354,56 @@ class _NearbyReportsScreenState extends State<NearbyReportsScreen>
   }
 
   Widget _buildListView() {
-    return SafeArea(
-      child: Column(
-        children: [
-          const SizedBox(height: 95), // Spacing for top header
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                Text(
-                  'Active Incident Reports (${_filteredIncidents.length})',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF0F2B48),
-                  ),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Text(
+                'Active Incident Reports (${_filteredIncidents.length})',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF0F2B48),
                 ),
-                const Spacer(),
-                GestureDetector(
-                  onTap: _loadLiveBackendData,
-                  child: Row(
-                    children: [
-                      const Icon(Icons.refresh_rounded, size: 14, color: AppColors.primaryNavy),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Refresh',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.primaryNavy,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: _loadLiveBackendData,
-              child: ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                itemCount: _filteredIncidents.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final inc = _filteredIncidents[index];
-                  return _buildIncidentListCard(inc);
-                },
               ),
+              const Spacer(),
+              GestureDetector(
+                onTap: _loadLiveBackendData,
+                child: Row(
+                  children: [
+                    const Icon(Icons.refresh_rounded, size: 14, color: AppColors.primaryNavy),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Refresh',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primaryNavy,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _loadLiveBackendData,
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              itemCount: _filteredIncidents.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final inc = _filteredIncidents[index];
+                return _buildIncidentListCard(inc);
+              },
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -1038,96 +1426,101 @@ class _NearbyReportsScreenState extends State<NearbyReportsScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.1),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF0F2B48).withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(12),
-        leading: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: isNetworkPhoto
-              ? Image.network(
-                  inc['photo'] as String,
-                  width: 55,
-                  height: 55,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Image.asset('assets/images/1.jpg', width: 55, height: 55, fit: BoxFit.cover),
-                )
-              : Image.asset(
-                  inc['photo'] as String,
-                  width: 55,
-                  height: 55,
-                  fit: BoxFit.cover,
-                ),
-        ),
-        title: Text(
-          inc['title'] as String,
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 13,
-            fontWeight: FontWeight.w800,
-            color: const Color(0xFF0F2B48),
-          ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            Text(
-              inc['location'] as String,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 11,
-                color: const Color(0xFF64748B),
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Row(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _showIncidentDetailModal(inc),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: isShelter
-                        ? const Color(0xFFDCFCE7)
-                        : (inc['type'] == 'FLOOD'
-                            ? const Color(0xFFDBEAFE)
-                            : (inc['type'] == 'BLOCKAGE'
-                                ? const Color(0xFFFEF3C7)
-                                : const Color(0xFFFEE2E2))),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    isShelter ? 'RELIEF HUB' : inc['severity'] as String,
-                    style: GoogleFonts.plusJakartaSans(
-                      color: themeColor,
-                      fontSize: 8.5,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: isNetworkPhoto
+                      ? Image.network(
+                          inc['photo'] as String,
+                          width: 60,
+                          height: 60,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Image.asset('assets/images/1.jpg', width: 60, height: 60, fit: BoxFit.cover),
+                        )
+                      : Image.asset(
+                          inc['photo'] as String,
+                          width: 60,
+                          height: 60,
+                          fit: BoxFit.cover,
+                        ),
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  inc['reportedTime'] as String,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 10,
-                    color: const Color(0xFF94A3B8),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: themeColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              isShelter ? 'SHELTER' : (inc['severity'] as String),
+                              style: GoogleFonts.plusJakartaSans(
+                                color: themeColor,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            inc['reportedTime'] as String,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 10,
+                              color: const Color(0xFF94A3B8),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        inc['title'] as String,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF0F2B48),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        inc['location'] as String,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 11,
+                          color: const Color(0xFF64748B),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-          ],
+          ),
         ),
-        trailing: const Icon(
-          Icons.arrow_forward_ios_rounded,
-          size: 14,
-          color: Color(0xFF94A3B8),
-        ),
-        onTap: () => _showIncidentDetailModal(inc),
       ),
     );
   }
@@ -1137,50 +1530,42 @@ class _NearbyReportsScreenState extends State<NearbyReportsScreen>
       context: context,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Basemap Styles (Watermark-Free)',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFF0F2B48),
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE2E8F0),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              _buildStyleOption(
-                'Streets HD (OpenStreetMap)',
-                MapboxConfig.styleStreets,
-                Icons.map_rounded,
-              ),
-              _buildStyleOption(
-                'Satellite Imagery (Esri HD)',
-                MapboxConfig.styleSatellite,
-                Icons.satellite_alt_rounded,
-              ),
-              _buildStyleOption(
-                'Dark Tactical (Esri Dark)',
-                MapboxConfig.styleDark,
-                Icons.dark_mode_rounded,
-              ),
-              _buildStyleOption(
-                'Outdoors & Topo (OpenTopo)',
-                MapboxConfig.styleOutdoors,
-                Icons.terrain_rounded,
-              ),
-              _buildStyleOption(
-                'Light Minimal (Esri Light)',
-                MapboxConfig.styleLight,
-                Icons.light_mode_rounded,
-              ),
-            ],
+                const SizedBox(height: 16),
+                Text(
+                  'Select Map Theme',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF0F2B48),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _buildStyleOption('Streets', MapboxConfig.styleStreets, Icons.map_rounded),
+                _buildStyleOption('Satellite View', MapboxConfig.styleSatellite, Icons.satellite_alt_rounded),
+                _buildStyleOption('Night / Dark Mode', MapboxConfig.styleDark, Icons.dark_mode_rounded),
+                _buildStyleOption('Topographic / Outdoors', MapboxConfig.styleOutdoors, Icons.terrain_rounded),
+              ],
+            ),
           ),
         );
       },
@@ -1190,9 +1575,18 @@ class _NearbyReportsScreenState extends State<NearbyReportsScreen>
   Widget _buildStyleOption(String title, String styleId, IconData icon) {
     final isSelected = _currentStyle == styleId;
     return ListTile(
-      leading: Icon(
-        icon,
-        color: isSelected ? const Color(0xFF0F2B48) : const Color(0xFF64748B),
+      onTap: () {
+        setState(() => _currentStyle = styleId);
+        Navigator.pop(context);
+      },
+      contentPadding: EdgeInsets.zero,
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF0F2B48) : const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, color: isSelected ? Colors.white : const Color(0xFF0F2B48), size: 18),
       ),
       title: Text(
         title,
@@ -1203,35 +1597,23 @@ class _NearbyReportsScreenState extends State<NearbyReportsScreen>
         ),
       ),
       trailing: isSelected
-          ? const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981))
+          ? const Icon(Icons.check_circle_rounded, color: Color(0xFF0F2B48), size: 20)
           : null,
-      onTap: () {
-        setState(() => _currentStyle = styleId);
-        Navigator.pop(context);
-      },
     );
   }
 
-  String _getStyleLabel(String styleId) {
-    switch (styleId) {
-      case MapboxConfig.styleSatellite:
-        return 'Satellite';
-      case MapboxConfig.styleOutdoors:
-        return 'Outdoors';
-      case MapboxConfig.styleDark:
-        return 'Dark';
-      case MapboxConfig.styleLight:
-        return 'Light';
-      default:
-        return 'Streets';
-    }
+  String _getStyleLabel(String style) {
+    if (style == MapboxConfig.styleSatellite) return 'Satellite';
+    if (style == MapboxConfig.styleDark) return 'Dark';
+    if (style == MapboxConfig.styleOutdoors) return 'Terrain';
+    return 'Streets';
   }
 
   void _showIncidentDetailModal(Map<String, dynamic> incident) {
     final isShelter = incident['type'] == 'SHELTER';
-    final isConfirmed = incident['verdict'] == 'CONFIRMED' || incident['status'] == 'CONFIRMED';
+    final isConfirmed = incident['verified'] == true;
     final isRoadClosed = incident['is_road_closed'] == true;
-    final reasonsList = (incident['reasons'] is List) ? (incident['reasons'] as List) : <dynamic>[];
+    final reasonsList = incident['reasons'] as List<dynamic>? ?? [];
 
     Color themeColor;
     if (isShelter) {
@@ -1423,9 +1805,8 @@ class _NearbyReportsScreenState extends State<NearbyReportsScreen>
 
                   // Multi-Signal Evidence Reasoning Box (hazard_verdicts)
                   if (reasonsList.isNotEmpty) ...[
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 14),
                     Container(
-                      width: double.infinity,
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: const Color(0xFFF8FAFC),
@@ -1435,62 +1816,75 @@ class _NearbyReportsScreenState extends State<NearbyReportsScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Decision Reasoning (hazard_verdicts):',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: const Color(0xFF475569),
-                            ),
+                          Row(
+                            children: [
+                              const Icon(Icons.analytics_outlined, size: 14, color: Color(0xFF0F2B48)),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Multi-Signal Verification Log',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF0F2B48),
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 6),
-                          ...reasonsList.map((r) => Padding(
-                                padding: const EdgeInsets.only(bottom: 3),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text('• ', style: TextStyle(color: Color(0xFF0F2B48), fontWeight: FontWeight.bold)),
-                                    Expanded(
-                                      child: Text(
-                                        r.toString(),
-                                        style: GoogleFonts.plusJakartaSans(
-                                          fontSize: 11.5,
-                                          color: const Color(0xFF334155),
-                                          height: 1.3,
-                                        ),
+                          const SizedBox(height: 8),
+                          ...reasonsList.map((reason) {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('• ', style: TextStyle(color: Color(0xFF0284C7), fontWeight: FontWeight.bold)),
+                                  Expanded(
+                                    child: Text(
+                                      reason.toString(),
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 11.5,
+                                        color: const Color(0xFF475569),
+                                        height: 1.3,
                                       ),
                                     ),
-                                  ],
-                                ),
-                              )),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
                         ],
                       ),
                     ),
                   ],
 
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 16),
 
-                  // Detour / Navigation CTA Button
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      if (incident['coordinates'] != null) {
-                        _drawRouteTo(incident['coordinates'] as LatLng);
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0F2B48),
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(double.infinity, 48),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+                  // Navigation Action Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        if (incident['coordinates'] is LatLng) {
+                          _drawRouteTo(incident['coordinates'] as LatLng);
+                        }
+                      },
+                      icon: const Icon(Icons.directions_rounded, size: 18),
+                      label: Text(
+                        isShelter ? 'Route to Evacuation Center' : 'Safe Detour Around Hazard',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                    ),
-                    child: Text(
-                      isShelter ? 'Navigate to Shelter' : 'Calculate Turn-by-Turn Safe Detour',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 13.5,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0F2B48),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
                       ),
                     ),
                   ),
